@@ -1,0 +1,771 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   CineSync design tokens
+   Ported verbatim from the legacy inline `tailwind.config` (index.html:16-192).
+   Tailwind v4 reads these as theme values, so `bg-surface-container-high`,
+   `text-display-lg`, `font-headline-lg`, `px-margin-desktop`, `rounded-lg` …
+   all keep working exactly as they did before.
+   ========================================================================== */
+
+@theme {
+  /* ---- Colors (Material-style token set) ---- */
+  --color-primary: #4edea3;
+  --color-primary-hover: #34d399;
+  --color-primary-fixed: #6ffbbe;
+  --color-primary-fixed-dim: #4edea3;
+  --color-primary-container: #10b981;
+  --color-on-primary: #003824;
+  --color-on-primary-fixed: #002113;
+  --color-on-primary-fixed-variant: #005236;
+  --color-on-primary-container: #00422b;
+  --color-inverse-primary: #006c49;
+
+  --color-secondary: #adc6ff;
+  --color-secondary-fixed: #d8e2ff;
+  --color-secondary-fixed-dim: #adc6ff;
+  --color-secondary-container: #0566d9;
+  --color-on-secondary: #002e6a;
+  --color-on-secondary-fixed: #001a42;
+  --color-on-secondary-fixed-variant: #004395;
+  --color-on-secondary-container: #e6ecff;
+
+  --color-tertiary: #ffb3af;
+  --color-tertiary-fixed: #ffdad7;
+  --color-tertiary-fixed-dim: #ffb3af;
+  --color-tertiary-container: #fc7c78;
+  --color-on-tertiary: #650911;
+  --color-on-tertiary-fixed: #410005;
+  --color-on-tertiary-fixed-variant: #842225;
+  --color-on-tertiary-container: #711419;
+
+  --color-error: #ffb4ab;
+  --color-error-container: #93000a;
+  --color-on-error: #690005;
+  --color-on-error-container: #ffdad6;
+
+  --color-background: #050505;
+  --color-on-background: #e1e3e4;
+
+  --color-surface: #121212;
+  --color-surface-dim: #111415;
+  --color-surface-bright: #373a3b;
+  --color-surface-variant: #323536;
+  --color-surface-tint: #4edea3;
+  --color-surface-container-lowest: #0c0f10;
+  --color-surface-container-low: #191c1d;
+  --color-surface-container: #1d2021;
+  --color-surface-container-high: #282a2b;
+  --color-surface-container-highest: #323536;
+  --color-on-surface: #e1e3e4;
+  --color-on-surface-variant: #bbcabf;
+  --color-inverse-surface: #e1e3e4;
+  --color-inverse-on-surface: #2e3132;
+
+  --color-outline: #86948a;
+  --color-outline-variant: #3c4a42;
+
+  /* ---- Fonts ---- */
+  --font-display-lg: var(--font-outfit), sans-serif;
+  --font-display-md: var(--font-outfit), sans-serif;
+  --font-headline-lg: var(--font-outfit), sans-serif;
+  --font-headline-lg-mobile: var(--font-outfit), sans-serif;
+  --font-title-lg: var(--font-inter), sans-serif;
+  --font-body-lg: var(--font-inter), sans-serif;
+  --font-body-md: var(--font-inter), sans-serif;
+  --font-label-md: var(--font-inter), sans-serif;
+
+  /* ---- Type scale ---- */
+  --text-display-lg: 64px;
+  --text-display-lg--line-height: 1.1;
+  --text-display-lg--letter-spacing: -0.02em;
+  --text-display-lg--font-weight: 700;
+
+  --text-display-md: 48px;
+  --text-display-md--line-height: 1.2;
+  --text-display-md--letter-spacing: -0.01em;
+  --text-display-md--font-weight: 600;
+
+  /* legacy markup uses `text-display-md-mobile` for the brand wordmark */
+  --text-display-md-mobile: 28px;
+  --text-display-md-mobile--line-height: 1.2;
+  --text-display-md-mobile--letter-spacing: -0.01em;
+  --text-display-md-mobile--font-weight: 700;
+
+  --text-headline-lg: 32px;
+  --text-headline-lg--line-height: 1.3;
+  --text-headline-lg--font-weight: 600;
+
+  --text-headline-lg-mobile: 24px;
+  --text-headline-lg-mobile--line-height: 1.3;
+  --text-headline-lg-mobile--font-weight: 600;
+
+  --text-title-lg: 20px;
+  --text-title-lg--line-height: 1.5;
+  --text-title-lg--font-weight: 600;
+
+  --text-body-lg: 18px;
+  --text-body-lg--line-height: 1.6;
+  --text-body-lg--font-weight: 400;
+
+  --text-body-md: 16px;
+  --text-body-md--line-height: 1.6;
+  --text-body-md--font-weight: 400;
+
+  --text-label-md: 14px;
+  --text-label-md--line-height: 1.2;
+  --text-label-md--letter-spacing: 0.05em;
+  --text-label-md--font-weight: 500;
+
+  /* ---- Radius (legacy config overrode Tailwind's defaults) ---- */
+  --radius-DEFAULT: 1rem;
+  --radius-lg: 2rem;
+  --radius-xl: 3rem;
+
+  /* ---- Spacing ---- */
+  --spacing-container-max: 1440px;
+  --spacing-gutter: 24px;
+  --spacing-margin-desktop: 64px;
+  --spacing-margin-mobile: 20px;
+  --spacing-unit: 8px;
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+:root {
+  --primary: #10b981;
+  --primary-hover: #34d399;
+  --secondary: #3b82f6;
+  --text-muted: #a1a1aa;
+  --error: #ffb4ab;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-on-surface);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Material Symbols — stylesheet is linked in app/layout.tsx. */
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  user-select: none;
+}
+
+.material-symbols-outlined.fill {
+  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+
+/* ==========================================================================
+   Component classes
+   The legacy stylesheet redefined most of these up to five times; only the
+   final (winning) definition of each is kept here.
+   ========================================================================== */
+
+.glass-panel {
+  background-color: rgba(18, 18, 18, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    transform 0.3s ease;
+}
+
+.glass-panel:hover {
+  border-color: rgba(78, 222, 163, 0.25);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 30px rgba(78, 222, 163, 0.08);
+}
+
+.glass-card {
+  background-color: rgba(29, 32, 33, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glow-text {
+  text-shadow: 0 0 30px rgba(78, 222, 163, 0.45);
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(78, 222, 163, 0.3);
+  border-radius: 999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(78, 222, 163, 0.55);
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(78, 222, 163, 0.3) transparent;
+}
+
+/* ---- Top navigation ---- */
+.dynamic-nav {
+  transition:
+    background-color 0.35s ease,
+    border-color 0.35s ease,
+    box-shadow 0.35s ease,
+    backdrop-filter 0.35s ease;
+}
+
+.dynamic-nav.scrolled {
+  background-color: rgba(5, 5, 5, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+}
+
+/* ---- Poster / movie cards ---- */
+.movie-card {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.movie-card.resetting {
+  transition: transform 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.movie-card-overlay {
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.95) 0%,
+    rgba(0, 0, 0, 0.6) 40%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.movie-card:hover .movie-card-overlay {
+  opacity: 1;
+}
+
+.poster-overlay {
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.92) 0%,
+    rgba(0, 0, 0, 0.35) 50%,
+    transparent 100%
+  );
+}
+
+/* ---- Animated background ---- */
+.bg-orbs {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.15;
+  filter: grayscale(100%);
+}
+
+.bg-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(140px);
+  opacity: 0.6;
+  will-change: transform;
+}
+
+.bg-posters {
+  position: fixed;
+  inset: -50%;
+  z-index: -1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-content: center;
+  gap: 30px;
+  opacity: 0.15;
+  pointer-events: none;
+  will-change: transform;
+  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 1) 30%, rgba(0, 0, 0, 0) 80%);
+  -webkit-mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 1) 30%, rgba(0, 0, 0, 0) 80%);
+}
+
+.bg-posters img {
+  width: 140px;
+  height: 210px;
+  object-fit: cover;
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9);
+  filter: saturate(1.5) contrast(1.1);
+}
+
+.bg-posters img:nth-child(even) {
+  transform: translateY(60px);
+}
+
+.bg-posters img:nth-child(3n) {
+  transform: translateY(-40px);
+  width: 160px;
+  height: 240px;
+}
+
+.bg-posters img:nth-child(5n) {
+  transform: translateY(30px) rotate(-5deg);
+  opacity: 0.8;
+  box-shadow: 0 0 30px var(--primary);
+}
+
+.bg-posters img:nth-child(7n) {
+  transform: translateY(-20px) rotate(3deg) scale(1.15);
+  box-shadow: 0 0 40px var(--secondary);
+}
+
+/* Sits between the poster wall and the content so the wall reads as texture
+   rather than competing with text. Same z-index as .bg-posters and later in
+   the DOM, so it paints over the posters but still behind page content. */
+.bg-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(5, 5, 5, 0.5) 0%,
+    rgba(5, 5, 5, 0.82) 65%,
+    rgba(5, 5, 5, 0.96) 100%
+  );
+}
+
+/* Narrow screens put content directly over the busiest part of the wall. */
+@media (max-width: 767px) {
+  .bg-posters {
+    opacity: 0.08;
+  }
+
+  .bg-scrim {
+    background: rgba(5, 5, 5, 0.82);
+  }
+}
+
+/* ---- Carousels (Tracker / Anime tabs) ---- */
+.carousel-section {
+  margin-bottom: 48px;
+}
+
+.carousel-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 18px;
+  color: #fff;
+}
+
+.carousel-title span {
+  color: var(--color-primary);
+}
+
+.carousel-wrapper {
+  position: relative;
+}
+
+.carousel {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  padding: 8px 4px 24px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.carousel-item {
+  flex: 0 0 190px;
+  width: 190px;
+  transition: transform 0.35s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.carousel-item:hover {
+  transform: translateY(-8px);
+}
+
+.carousel-poster {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--color-surface-container);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.carousel-item:hover .carousel-poster {
+  border-color: rgba(78, 222, 163, 0.4);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 24px rgba(78, 222, 163, 0.18);
+}
+
+.carousel-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.carousel-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.carousel-info {
+  padding: 10px 2px 0;
+}
+
+.carousel-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.carousel-date {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.carousel-desc {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.scroll-btn {
+  position: absolute;
+  top: 32%;
+  z-index: 5;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(10, 10, 10, 0.75);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s ease;
+  opacity: 0;
+}
+
+.carousel-wrapper:hover .scroll-btn {
+  opacity: 1;
+}
+
+.scroll-btn:hover {
+  background: var(--color-primary);
+  color: #002113;
+  border-color: transparent;
+}
+
+.scroll-btn.left {
+  left: -14px;
+}
+
+.scroll-btn.right {
+  right: -14px;
+}
+
+/* ---- Hero carousel (Tracker tab) ---- */
+.hero-carousel {
+  position: relative;
+  width: 100%;
+  height: 70vh;
+  min-height: 460px;
+  border-radius: 24px;
+  overflow: hidden;
+  margin-bottom: 48px;
+  background: #000;
+}
+
+.hero-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+  pointer-events: none;
+}
+
+.hero-slide.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.hero-video-wrapper {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.hero-video-wrapper iframe {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100vw;
+  height: 56.25vw;
+  min-height: 100%;
+  min-width: 177.77vh;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  border: 0;
+}
+
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to top, rgba(5, 5, 5, 0.98) 5%, rgba(5, 5, 5, 0.4) 55%, transparent 100%),
+    linear-gradient(to right, rgba(5, 5, 5, 0.9) 0%, transparent 65%);
+}
+
+.hero-content {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  padding: 40px;
+  max-width: 640px;
+  z-index: 2;
+}
+
+.hero-title {
+  font-size: clamp(1.9rem, 4vw, 3rem);
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.1;
+  margin-bottom: 12px;
+}
+
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.hero-meta span {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.hero-desc {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.75);
+  margin-bottom: 20px;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hero-btns {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hero-btn {
+  padding: 12px 24px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  transition: all 0.25s ease;
+}
+
+.hero-btn.primary {
+  background: var(--color-primary);
+  color: #002113;
+  border-color: transparent;
+}
+
+.hero-btn.primary:hover {
+  background: var(--color-primary-fixed);
+  box-shadow: 0 0 24px rgba(78, 222, 163, 0.5);
+}
+
+.hero-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.hero-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  opacity: 0;
+  transition: all 0.25s ease;
+}
+
+.hero-carousel:hover .hero-nav {
+  opacity: 1;
+}
+
+.hero-nav:hover {
+  background: var(--color-primary);
+  color: #002113;
+}
+
+.hero-nav.prev {
+  left: 16px;
+}
+
+.hero-nav.next {
+  right: 16px;
+}
+
+.hero-dots {
+  position: absolute;
+  bottom: 18px;
+  right: 24px;
+  display: flex;
+  gap: 8px;
+  z-index: 4;
+}
+
+.hero-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.hero-dot.active {
+  background: var(--color-primary);
+  width: 26px;
+  border-radius: 999px;
+}
+
+/* ---- Misc ---- */
+.pulsing-text {
+  animation: cs-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes cs-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.search-input {
+  background: #181818;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--color-on-surface);
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-size: 0.9rem;
+  outline: none;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.search-input:focus {
+  border-color: rgba(78, 222, 163, 0.5);
+  box-shadow: 0 0 0 3px rgba(78, 222, 163, 0.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
