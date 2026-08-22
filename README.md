@@ -41,8 +41,14 @@ Render rather than committed:
 `region` is the one blueprint value that cannot be changed later — moving a service between
 regions means recreating it. It is set to `frankfurt`.
 
-On the free plan the service sleeps after 15 minutes idle and the next request pays a cold
-start of roughly a minute. The rails themselves are quick after that: route handlers are
+`/api/discover` is prerendered at build time, so it is the one route whose network calls
+happen during a deploy rather than during a request. Its poster-wall fetch is caught for
+exactly that reason: a rate-limited TMDB should not turn a deploy red over decoration
+sitting behind a scrim.
+
+If the build is OOM-killed on a 512MB instance, set `NODE_OPTIONS=--max-old-space-size=400`
+— the build completes under that cap. On the free plan the service also sleeps after 15
+minutes idle and the next request pays a cold start of roughly a minute. The rails themselves are quick after that: route handlers are
 `revalidate: 3600`, so a month of calendar data or a set of Discover rails is fetched once
 an hour rather than per visitor.
 

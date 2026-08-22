@@ -16,11 +16,21 @@ export async function GET() {
   const [movies, series, tmdbMovies, tmdbSeries] = await Promise.all([
     fetchTopCatalog("movie"),
     fetchTopCatalog("series"),
-    // Cinemeta's top catalog caps at 50 per kind, which barely covers the wall's
-    // own grid and leaves nothing for it to cross-fade in. TMDB tops the pool up
-    // with poster URLs only — no per-title enrichment.
-    posterWall("movie"),
-    posterWall("tv"),
+    /*
+       Cinemeta's top catalog caps at 50 per kind, which barely covers the
+       wall's own grid and leaves nothing for it to cross-fade in. TMDB tops
+       the pool up with poster URLs only — no per-title enrichment.
+
+       Both are caught, because this route is the one place a TMDB failure was
+       fatal rather than merely visible. `posterWall` throws on any non-OK
+       response — `fetchTopCatalog` swallows its own errors and the sibling
+       routes wrap theirs — and this route is prerendered at build time, so a
+       rate-limited or unreachable TMDB during a deploy failed the *build*, not
+       just the request. The wall is decoration behind a scrim; it is not worth
+       a red deploy.
+    */
+    posterWall("movie").catch(() => [] as string[]),
+    posterWall("tv").catch(() => [] as string[]),
   ]);
 
   // Interleave films and shows so the slider isn't six movies in a row.
