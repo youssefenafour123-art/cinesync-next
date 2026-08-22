@@ -19,6 +19,27 @@ import { ModalShell } from "./ModalShell";
  * app opened the same hardcoded Oppenheimer markup. Here the item is passed in
  * as a prop and rendered directly.
  */
+/**
+ * Whether two credit lines name the same people.
+ *
+ * Compared as a set of squashed names, because the providers punctuate
+ * differently and nothing else about them differs: TMDB writes "D. B. Weiss"
+ * where IMDb writes "D.B. Weiss", and comparing the raw strings would call
+ * that a second, different credit.
+ */
+function sameCredit(a?: string, b?: string): boolean {
+  if (!a || !b) return false;
+  const names = (v: string) =>
+    new Set(
+      v
+        .split(",")
+        .map((n) => n.replace(/[^a-z0-9]/gi, "").toLowerCase())
+        .filter(Boolean),
+    );
+  const [x, y] = [names(a), names(b)];
+  return x.size === y.size && [...x].every((n) => y.has(n));
+}
+
 export function DetailsModal({ item }: { item: MediaItem }) {
   const close = useAppStore((s) => s.closeDetails);
   const inLibrary = useAppStore((s) => (item.imdbId ? s.libraryIds.has(item.imdbId) : false));
@@ -63,6 +84,25 @@ export function DetailsModal({ item }: { item: MediaItem }) {
       : item;
 
   const meta = [full.year, full.genres?.slice(0, 3).join(", "), full.runtime].filter(Boolean);
+
+  /*
+     A series credits its creators once, not twice.
+
+     `created_by` on a show already means "the people who wrote it", so a
+     writing credit naming exactly those people is the same sentence under a
+     second heading — "Creator: Vince Gilligan" beside "Writer: Vince
+     Gilligan". A show whose writing credit is *wider* than its creators (The
+     Wire adds Ed Burns) still says so.
+
+     A film keeps both lines either way: writing and directing are separate
+     credits even when one person holds both, which is how IMDb prints them.
+
+     This lives here rather than in `/api/enrich` because the merge above lets
+     the list item override the fetched payload — dropping the field server-side
+     would only see it reinstated by whatever rail the card came from.
+  */
+  const showWriter =
+    Boolean(full.writer) && !(full.kind === "series" && sameCredit(full.director, full.writer));
 
   return (
     <ModalShell
@@ -132,6 +172,19 @@ export function DetailsModal({ item }: { item: MediaItem }) {
             </div>
           ) : null}
 
+          {showWriter ? (
+            <div>
+              {/* "Screenplay", "Teleplay", "Writer" or "Writers" — whichever
+                  credit the title actually carries. Shown even when it names
+                  the same person as the directing credit, because writing and
+                  directing a film are two credits and IMDb prints both. */}
+              <span className="mb-1 block font-label-md text-label-md uppercase tracking-widest text-primary">
+                {full.writerLabel ?? "Writer"}
+              </span>
+              <span className="font-body-md text-body-md text-on-surface">{full.writer}</span>
+            </div>
+          ) : null}
+
           {full.rating ? (
             <div>
               <span className="mb-1 block font-label-md text-label-md uppercase tracking-widest text-primary">
@@ -155,6 +208,23 @@ export function DetailsModal({ item }: { item: MediaItem }) {
               {full.kind === "series" ? "Series" : "Movie"}
             </span>
           </div>
+
+          {full.kind === "series" && full.episodeCount ? (
+            <div>
+              <span className="mb-1 block font-label-md text-label-md uppercase tracking-widest text-primary">
+                Episodes
+              </span>
+              <span className="font-body-md text-body-md text-on-surface">
+                {full.episodeCount}
+                {full.seasonCount ? (
+                  <span className="text-on-surface-variant">
+                    {" "}
+                    across {full.seasonCount} {full.seasonCount === 1 ? "season" : "seasons"}
+                  </span>
+                ) : null}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         <div className="mb-8">

@@ -16,13 +16,30 @@ interface CinemetaMeta {
   runtime?: string;
   genres?: string[];
   director?: string[];
+  writer?: string[];
   cast?: string[];
   trailers?: { source?: string; type?: string }[];
+  /** Series only. One entry per episode Cinemeta knows about. */
+  videos?: { season?: number; episode?: number }[];
 }
 
 function toMediaItem(meta: CinemetaMeta, kind: MediaKind): MediaItem {
   const trailer =
     meta.trailers?.find((t) => t.type === "Trailer" && t.source) ?? meta.trailers?.[0];
+
+  /*
+     Episode totals from the video list.
+
+     Cinemeta ships one `videos` entry per episode, so counting them is the
+     whole calculation. Season 0 is excluded on purpose — that is where
+     specials, recaps and OVAs live, and nobody describing a show's length
+     counts them. TMDB's own totals are preferred where both exist (see
+     `/api/enrich`); this is the fallback for a title TMDB cannot match.
+  */
+  const episodes = kind === "series" ? (meta.videos ?? []).filter((v) => (v.season ?? 0) > 0) : [];
+  const seasonCount = episodes.length
+    ? new Set(episodes.map((v) => v.season)).size
+    : undefined;
 
   return {
     key: meta.id,
@@ -49,6 +66,16 @@ function toMediaItem(meta: CinemetaMeta, kind: MediaKind): MediaItem {
           ? "Directors"
           : "Director"
         : undefined,
+    /*
+       IMDb's writing credit, straight through. Unlike `director` this is
+       carried for both kinds: IMDb credits a series to the people who wrote
+       it, which is the question being asked, rather than to whoever happened
+       to direct one episode.
+    */
+    writer: meta.writer?.length ? meta.writer.slice(0, 4).join(", ") : undefined,
+    writerLabel: meta.writer?.length ? (meta.writer.length > 1 ? "Writers" : "Writer") : undefined,
+    seasonCount,
+    episodeCount: episodes.length || undefined,
     cast: meta.cast?.slice(0, 6).join(", "),
     trailerKey: trailer?.source,
   };

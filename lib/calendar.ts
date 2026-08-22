@@ -119,9 +119,25 @@ export function isValidMonth(month: string | null): month is string {
 }
 
 function movieEntries(raw: DiscoverMovie[], first: string, last: string): CalendarEntry[] {
+  /*
+     Deduplicated by TMDB id.
+
+     The two `/discover/movie` pages are two separate requests against a
+     `popularity.desc` ordering that TMDB recomputes between them, so a title
+     sitting near the page boundary can come back on both — and did: "Spa
+     Weekend" appeared twice on 20 August 2026, once per page. Two identical
+     cards on the same day, and a duplicate React key for the pair.
+  */
+  const seen = new Set<number>();
+
   return raw
     .filter((m) => m.release_date && m.release_date >= first && m.release_date <= last)
     .filter((m) => m.poster_path)
+    .filter((m) => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    })
     .map((m) => ({
       key: `movie-${m.id}`,
       tmdbId: m.id,

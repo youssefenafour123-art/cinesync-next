@@ -102,6 +102,22 @@ Three details are load-bearing:
   same query returns Reacher, House of the Dragon, Silo and Ted Lasso.
 - **A binge release is one entry, not five.** Episodes dropping on the same day are
   grouped, so one show can't fill a day cell.
+- **Films are deduplicated by TMDB id.** The two `/discover/movie` pages are two requests
+  against an ordering TMDB recomputes between them, so a title on the page boundary can
+  come back on both — "Spa Weekend" appeared twice on 20 August 2026.
+
+Clicking a day opens it full-size (`components/modals/DayModal.tsx`): backdrop art per
+release, the whole synopsis, every episode with its own summary, and arrows to walk to the
+next day. The grid cell is 116px of cropped poster thumbnails and the panel under the grid
+shares the page with the month, so both stay compact — this is the version with room to
+read. Empty days open too; "nothing releases on the 3rd" is an answer worth being able to
+ask for.
+
+That modal is portalled to `<body>`, unlike every other modal in the app. It is rendered
+from inside a tab, and the tab shell is `<main className="relative z-10">` — a stacking
+context — so its z-211 was only ever compared against `main`, and lost to the top nav
+(z-50) and the mobile tab bar (z-100): the navs painted over the panel and the backdrop
+failed to dim them.
 
 See `lib/calendar.ts`.
 
@@ -120,6 +136,32 @@ for The Matrix, "Joel Coen" for No Country for Old Men.
 Cinemeta's `director` is only used for films, because on a show it is whoever directed
 some episode; `/api/enrich` takes TMDB's value first, which is the one that knows the
 difference.
+
+`writer` is the same shape of problem. TMDB files the whole writing department under one
+department and half a dozen job titles that do not mean the same thing: "Story" is who had
+the idea, "Novel" / "Characters" / "Comic Book" are the source material, and only
+"Screenplay" / "Teleplay" / "Writer" are the credit meant by "who wrote it". So the
+highest-ranked job actually present wins and only the people holding *that* job are listed
+— otherwise Blade Runner is written by Philip K. Dick, who wrote the novel, and Joker by
+Bob Kane. `writerLabel` carries the credit's own name, so the heading reads "Screenplay"
+where that is what it is.
+
+TMDB is preferred over Cinemeta here for the same reason as the director, plus one:
+the details modal lets the list item override `/api/enrich`, so a title opened from a rail
+already shows TMDB's credit. Preferring Cinemeta in the route made the same film read
+differently depending on whether it was opened from a rail or cold from the calendar.
+
+A series prints its creators once. `created_by` already means "the people who wrote it", so
+a writing credit naming exactly those people is the same sentence under a second heading —
+"Creator: Vince Gilligan" beside "Writer: Vince Gilligan". A show whose writing credit is
+wider than its creators still says so. Films keep both lines: writing and directing are
+separate credits even when one person holds both, which is how IMDb prints them. The
+comparison ignores punctuation, because TMDB writes "D. B. Weiss" where IMDb writes
+"D.B. Weiss".
+
+Series also carry `seasonCount` and `episodeCount` — TMDB's totals for the whole run, with
+Cinemeta's `videos` list (season 0 excluded, that is where specials live) as the fallback
+for a title TMDB cannot match.
 
 ### Search
 
@@ -283,7 +325,7 @@ npm run build     # types + lint
 npm run dev
 ```
 
-Three Puppeteer suites live in `scripts/` — see `scripts/README.md` for how to run them.
+Five Puppeteer suites live in `scripts/` — see `scripts/README.md` for how to run them.
 
 Then, by hand: click three different posters and confirm three different titles; upload an
 IMDb CSV export and confirm a non-zero item count; connect a Stremio account and run a

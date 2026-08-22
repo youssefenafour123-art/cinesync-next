@@ -49,9 +49,18 @@ interface TmdbDetail {
   /** Series only. The people who actually created the show. */
   created_by?: { id?: number; name?: string; profile_path?: string | null }[];
   episode_run_time?: number[];
+  /** Series only. TMDB's own totals — the whole run, not the current season. */
+  number_of_seasons?: number;
+  number_of_episodes?: number;
   genres?: { name: string }[];
   credits?: {
-    crew?: { id?: number; job?: string; name?: string; profile_path?: string | null }[];
+    crew?: {
+      id?: number;
+      job?: string;
+      department?: string;
+      name?: string;
+      profile_path?: string | null;
+    }[];
     cast?: { id?: number; name?: string; character?: string; profile_path?: string | null }[];
   };
   videos?: { results?: { site?: string; type?: string; key?: string }[] };
@@ -109,6 +118,54 @@ function baseItem(raw: TmdbListItem, kind: MediaKind): MediaItem {
     voteCount: raw.vote_count,
     description: raw.overview || undefined,
   };
+}
+
+/**
+ * The writing credit, in the order the industry itself ranks them.
+ *
+ * TMDB files the whole writing department under one `department: "Writing"`
+ * and half a dozen job titles, and they do not mean the same thing. "Story"
+ * is who had the idea, "Novel" / "Characters" / "Comic Book" are the source
+ * material and belong to a book nobody wrote for the screen, and only
+ * "Screenplay" / "Teleplay" / "Writer" are the credit a viewer means when
+ * they ask who wrote it. Flattening all of them into one line is how Blade
+ * Runner ends up "written by" Philip K. Dick, who died before it was cut.
+ *
+ * So: take the highest-ranked job actually present and list only the people
+ * holding *that* job. A film with a screenplay credit shows its screenwriters
+ * and not its novelist; a film credited only as "Writer" still shows someone.
+ *
+ * `job` is also matched against the department, because "Writer" appears in
+ * the Sound department too — a staff writer on a documentary is not the
+ * screenwriter, and TMDB will hand you both under the same job title.
+ */
+const WRITING_JOBS = ["Screenplay", "Teleplay", "Writer", "Story"] as const;
+
+function writingCredit(
+  crew: { job?: string; department?: string; name?: string }[],
+): { writer: string; writerLabel: string } | null {
+  for (const job of WRITING_JOBS) {
+    const names = [
+      ...new Set(
+        crew
+          .filter(
+            (c) =>
+              c.job === job &&
+              c.name &&
+              (c.department === "Writing" || c.department === undefined),
+          )
+          .map((c) => c.name as string),
+      ),
+    ];
+    if (!names.length) continue;
+
+    // "Screenplay" and "Teleplay" are the credit's own name and read wrong
+    // pluralised — two people still wrote one screenplay.
+    const label =
+      job === "Writer" ? (names.length > 1 ? "Writers" : "Writer") : job === "Story" ? "Story" : job;
+    return { writer: names.join(", "), writerLabel: label };
+  }
+  return null;
 }
 
 /**
@@ -171,11 +228,32 @@ async function enrich(raw: TmdbListItem, kind: MediaKind): Promise<MediaItem> {
         item.directorLabel = unique.length > 1 ? "Directors" : "Director";
       }
     }
+    /*
+       The writing credit is a separate question from the directing one.
+
+       For a series this is usually empty at the show level — television
+       credits writers per episode — which is why `created_by` still carries
+       the authorship there and this only fills in when TMDB has a
+       series-level writing credit to give.
+    */
+    const writing = writingCredit(crew);
+    if (writing) {
+      item.writer = writing.writer;
+      item.writerLabel = writing.writerLabel;
+    }
+
+    // Series totals. `number_of_episodes` counts the whole run across every
+    // season, which is the number people mean by "how long is this show".
+    if (kind === "series") {
+      if (detail.number_of_seasons) item.seasonCount = detail.number_of_seasons;
+      if (detail.number_of_episodes) item.episodeCount = detail.number_of_episodes;
+    }
+
     item.cast = castList.slice(0, 3).map((c) => c.name).filter(Boolean).join(", ") || undefined;
 
     // Keep ids alongside names so the details modal can open a profile.
     // Directors and writers first — they're what people look up.
-    const KEY_CREW = /^(Director|Screenplay|Writer|Story|Creator)$/;
+    const KEY_CREW = /^(Director|Screenplay|Teleplay|Writer|Story|Creator)$/;
     const seenPeople = new Set<number>();
     const people: CreditedPerson[] = [];
 

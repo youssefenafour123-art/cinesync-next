@@ -19,6 +19,14 @@ interface ModalShellProps {
  * toggling `.active` and `.hidden` on the same element from two different
  * script blocks — where `closeTrailer` was defined twice and the second
  * definition silently won.
+ *
+ * One constraint on where a modal may be rendered from: the z-index below is
+ * only comparable within its own stacking context, and the tab shell in
+ * `page.tsx` is `<main className="relative z-10">`. A modal rendered from
+ * inside a tab is therefore ranked against `main` rather than against the navs
+ * that sit outside it, and loses to both. Declare it at the top level of
+ * `page.tsx` like the rest, or portal it out — `CalendarTab` does the latter,
+ * because the day it shows is local state that doesn't belong in the store.
  */
 export function ModalShell({ onClose, children, className = "", label }: ModalShellProps) {
   // Mount order, not DOM order, decides which modal is on top — see the hook.

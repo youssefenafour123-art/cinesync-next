@@ -1,6 +1,6 @@
 # Verification scripts
 
-Four Puppeteer suites that drive the running app and assert real behaviour —
+Five Puppeteer suites that drive the running app and assert real behaviour —
 they were used to verify the rebuild and every feature added on top of it.
 
 They are **not** wired into `npm test`, because Puppeteer isn't a dependency of
@@ -28,6 +28,7 @@ node scripts/verify-core.js
 node scripts/verify-features.js
 node scripts/verify-ux.js
 node scripts/verify-data.js
+node scripts/verify-credits-calendar.js
 ```
 
 Both exit non-zero on failure and write screenshots into `OUT`.
@@ -92,6 +93,21 @@ sits inside its visibility band; and the calendar renders a month grid, details
 a day, shows season/episode codes for episode drops, moves between months and
 filters films out.
 
+**`verify-credits-calendar.js`** — the writing credit and the day view:
+a film shows its director and, separately, its writers; a series shows its
+creator, an episode total across seasons, and *not* the creator reprinted under
+a Writer heading; clicking a day opens a modal materially bigger than the 116px
+grid cell, listing the day's releases with untruncated episode lines; the
+next-day arrow moves it; details opened from inside it paint on top and Escape
+peels back one layer; an empty day is still clickable and says nothing releases;
+the scroll lock releases.
+
+Its stacking assertion is the one that earned its place. The day modal is
+rendered from inside a tab rather than from `page.tsx`, and the tab shell is
+`<main className="relative z-10">` — so the modal's z-211 was compared against
+`main`, not against the navs outside it, and both painted over the panel while
+its backdrop failed to dim them. Nothing threw; it just looked wrong.
+
 ## A note on writing assertions here
 
 Two traps cost real time when these were written:
@@ -102,3 +118,7 @@ Two traps cost real time when these were written:
 - **Fixed `sleep()` calls are flaky.** Data-dependent steps use the `waitFor`
   poller instead; four "failures" in an early run were purely the harness
   sampling before React had rendered.
+- **Don't assert on a heading that names a provider's job title.** The writing
+  credit's heading is "Screenplay" or "Writers" depending on which job TMDB
+  actually credited, so `verify-credits-calendar.js` waits on a *name* that only
+  appears in the writing credit and keys its fields on the uppercased label.

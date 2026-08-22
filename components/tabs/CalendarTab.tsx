@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import type { CalendarPayload } from "@/app/api/calendar/route";
 import type { CalendarEntry } from "@/lib/types";
@@ -10,6 +11,7 @@ import { useReducedMotion } from "@/lib/useReducedMotion";
 import { PosterImage } from "@/components/ui/PosterImage";
 import { Icon } from "@/components/ui/Icon";
 import { ErrorState } from "@/components/ui/States";
+import { DayModal } from "@/components/modals/DayModal";
 
 type Filter = "all" | "movie" | "series";
 
@@ -76,10 +78,35 @@ function monthGrid(month: string): (string | null)[] {
  * A day is selected rather than expanded in place. Thirty cells that each grow
  * to fit their contents is not a calendar you can scan, so the grid stays
  * uniform and the detail lives in a panel below it.
+ *
+ * That panel shares the page with the month, so it stays compact — clamped
+ * synopses, one-line episode titles. Clicking a day therefore does two things:
+ * it selects the day *and* opens `DayModal`, which is the same information with
+ * room to actually read it. Every real date is clickable, empty ones included;
+ * "nothing releases that day" is an answer worth being able to ask for.
  */
 export function CalendarTab() {
   const [month, setMonth] = useState(thisMonth);
   const [selected, setSelected] = useState<string | null>(null);
+  /** The day blown up into the modal; null when it's closed. */
+  const [openDay, setOpenDay] = useState<string | null>(null);
+  /*
+     The modal is portalled to <body>, so it can only be rendered once there is
+     a document to portal into — false on the server, true from hydration on.
+
+     `useSyncExternalStore` with a subscription that never fires is React's own
+     way to ask "am I on the client"; the `useState` + `useEffect` version of
+     this does the same thing one wasted render later.
+
+     It has to be mounted while closed, rather than only while `openDay` is
+     set, or `AnimatePresence` would be torn down along with its child and the
+     modal would vanish instead of fading out.
+  */
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   const [filter, setFilter] = useState<Filter>("all");
   // +1 when moving forward, -1 back: the month slides the way you sent it.
   const [direction, setDirection] = useState(1);
@@ -111,21 +138,56 @@ export function CalendarTab() {
   /*
      The day actually shown, derived rather than stored.
 
-     `selected` holds only what the user clicked. Changing month or filter can
-     leave that pointing at a day this view has nothing for, so the fallback is
-     computed at render: today if the month contains it, otherwise the first day
-     that has something. Syncing this into state from an effect meant a
-     cascading render and one frame showing the stale day.
+     `selected` holds only what the user clicked, and it wins for any day in
+     the month on display — including one with nothing on it, now that empty
+     days are clickable. Only a selection left behind by a month change is
+     discarded, and then the fallback is computed at render: today if this
+     month contains it, otherwise the first day that has something. Syncing
+     this into state from an effect meant a cascading render and one frame
+     showing the stale day.
   */
   const effectiveDay = useMemo(() => {
-    if (selected && byDate.has(selected)) return selected;
+    if (selected?.startsWith(`${month}-`)) return selected;
     if (byDate.has(today)) return today;
     return [...byDate.keys()].sort()[0] ?? null;
-  }, [selected, byDate, today]);
+  }, [selected, byDate, today, month]);
 
   const go = (delta: number) => {
     setDirection(delta);
     setMonth((m) => shiftMonth(m, delta));
+    // A day from the outgoing month has nothing to say about the incoming one.
+    setOpenDay(null);
+  };
+
+  /** Last day of the month on display, as `YYYY-MM-DD`. */
+  const lastDay = useMemo(() => {
+    const [y, m] = month.split("-").map(Number);
+    const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return `${month}-${String(days).padStart(2, "0")}`;
+  }, [month]);
+
+  const openDayEntries = openDay ? (byDate.get(openDay) ?? []) : [];
+
+  /*
+     Walk the modal a day at a time.
+
+     Deliberately bounded to the month on display: the grid behind holds one
+     month's data and nothing else, so stepping off the end would open a day
+     the fetched payload knows nothing about and report it as empty.
+  */
+  const stepDay = (delta: number) => {
+    if (!openDay) return;
+    const d = new Date(`${openDay}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + delta);
+    const next = d.toISOString().slice(0, 10);
+    if (!next.startsWith(`${month}-`)) return;
+    setOpenDay(next);
+    setSelected(next);
+  };
+
+  const selectDay = (date: string) => {
+    setSelected(date);
+    setOpenDay(date);
   };
 
   const selectedEntries = effectiveDay ? (byDate.get(effectiveDay) ?? []) : [];
@@ -138,7 +200,8 @@ export function CalendarTab() {
             Release Calendar
           </h1>
           <p className="mt-2 font-body-md text-body-md text-on-surface-variant">
-            Every premiere and episode drop, by the day it lands.
+            Every premiere and episode drop, by the day it lands. Click a day to
+            open it in full.
           </p>
         </div>
 
@@ -236,7 +299,7 @@ export function CalendarTab() {
                     entries={date ? (byDate.get(date) ?? []) : []}
                     isToday={date === today}
                     isSelected={date !== null && date === effectiveDay}
-                    onSelect={() => date && setSelected(date)}
+                    onSelect={() => date && selectDay(date)}
                     reduced={reduced}
                   />
                 ))}
@@ -245,6 +308,37 @@ export function CalendarTab() {
           </div>
 
           <DayPanel date={effectiveDay} entries={selectedEntries} loading={loading && !data} />
+
+          {/*
+             Portalled to <body>, unlike every other modal in the app, which is
+             declared at the top level of `page.tsx` and needs no help.
+
+             This one is rendered from inside a tab, and the tab shell is
+             `<main className="relative z-10">` — a stacking context. A z-index
+             handed out inside it is only ever compared against its siblings, so
+             the modal's z-211 lost to the top nav (z-50) and the mobile tab bar
+             (z-100), which sit outside `main`: the navs painted over the panel
+             and the backdrop failed to dim them. Leaving the subtree fixes it
+             without moving the calendar's state into the global store.
+          */}
+          {mounted
+            ? createPortal(
+                <AnimatePresence>
+                  {openDay ? (
+                    <DayModal
+                      key={openDay}
+                      date={openDay}
+                      entries={openDayEntries}
+                      onClose={() => setOpenDay(null)}
+                      onNavigate={stepDay}
+                      canGoBack={openDay > `${month}-01`}
+                      canGoForward={openDay < lastDay}
+                    />
+                  ) : null}
+                </AnimatePresence>,
+                document.body,
+              )
+            : null}
         </>
       )}
     </div>
@@ -282,9 +376,16 @@ function DayCell({
       initial={reduced ? false : { opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reduced ? 0 : 0.3, delay: reduced ? 0 : Math.min(index * 0.008, 0.3) }}
-      whileHover={busy && !reduced ? { y: -3 } : undefined}
+      whileHover={reduced ? undefined : { y: -3 }}
       onClick={onSelect}
-      disabled={!busy}
+      /*
+         Empty days stay clickable.
+
+         They used to be `disabled`, which made "is anything out on the 3rd?"
+         a question the calendar answered only by the absence of thumbnails in
+         a cell you couldn't press. Opening an empty day and being told so is
+         a better answer, and it means every cell behaves the same way.
+      */
       aria-label={`${date}${busy ? `, ${entries.length} releases` : ", nothing scheduled"}`}
       aria-current={isToday ? "date" : undefined}
       /*
@@ -302,8 +403,8 @@ function DayCell({
           ? "border-primary/70 bg-primary/10"
           : busy
             ? "border-white/10 bg-surface-container/50 hover:border-primary/40"
-            : "border-white/5 bg-surface-container/20"
-      } ${busy ? "cursor-pointer" : "cursor-default"}`}
+            : "border-white/5 bg-surface-container/20 hover:border-white/20"
+      } cursor-pointer`}
     >
       <div className="relative z-10 flex items-center justify-between gap-1">
         <span
@@ -394,6 +495,15 @@ function DayPanel({
             <p className="py-10 text-center font-body-md text-body-md text-on-surface-variant">
               Nothing scheduled this month for the current filter.
             </p>
+          ) : !entries.length ? (
+            <>
+              <h2 className="mb-4 border-b border-white/10 pb-3 font-headline-lg text-headline-lg-mobile text-on-surface">
+                {label}
+              </h2>
+              <p className="py-6 text-center font-body-md text-body-md text-on-surface-variant">
+                Nothing releases on this day.
+              </p>
+            </>
           ) : (
             <>
               <h2 className="mb-4 flex items-baseline gap-3 border-b border-white/10 pb-3 font-headline-lg text-headline-lg-mobile text-on-surface">

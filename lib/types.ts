@@ -27,6 +27,22 @@ export interface MediaItem {
    * executive producer as the director is how this field used to be wrong.
    */
   directorLabel?: string;
+  /**
+   * Who wrote it. Kept apart from `director` because they are different
+   * credits even when they are the same person — a viewer looking for "who
+   * wrote this" should not have to infer it from the directing credit.
+   */
+  writer?: string;
+  /**
+   * What `writer` actually is: "Screenplay", "Teleplay", "Writer" or
+   * "Writers". TMDB credits the writing department under several job titles
+   * and they are not interchangeable — "Story by" is not a screenplay credit.
+   */
+  writerLabel?: string;
+  /** Series only. Total seasons TMDB has on record. */
+  seasonCount?: number;
+  /** Series only. Total episodes across every season. */
+  episodeCount?: number;
   cast?: string;
   /** Credited people with TMDB ids, so the UI can open their profile. */
   people?: CreditedPerson[];
