@@ -21,6 +21,21 @@ interface PosterCardProps {
  * element IDs that didn't exist, so every card showed the same hardcoded
  * Oppenheimer panel.
  */
+/**
+ * Phase offset for the animated edge light, derived from the item's own key.
+ *
+ * A rail of posters all starting their sweep on the same frame pulses in
+ * unison, which reads as a loading indicator rather than as ambient light.
+ * Deriving the offset from the key rather than from `Math.random()` keeps it
+ * stable across renders and identical on the server and the client — a random
+ * value here would be a hydration mismatch.
+ */
+function edgeDelay(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return `-${(Math.abs(hash) % 700) / 100}s`;
+}
+
 export function PosterCard({ item, variant = "rail", showMeta = true }: PosterCardProps) {
   const openDetails = useAppStore((s) => s.openDetails);
   const inLibrary = useAppStore((s) => (item.imdbId ? s.libraryIds.has(item.imdbId) : false));
@@ -50,7 +65,10 @@ export function PosterCard({ item, variant = "rail", showMeta = true }: PosterCa
       }}
       aria-label={`Open details for ${item.title}`}
     >
-      <div className="group relative aspect-[2/3] overflow-hidden rounded-[14px] border border-white/5 bg-surface-container shadow-[0_12px_30px_rgba(0,0,0,0.55)] transition-all duration-300 hover:border-primary/40 hover:shadow-[0_16px_40px_rgba(0,0,0,0.7),0_0_24px_rgba(78,222,163,0.18)]">
+      <div
+        className="poster-glow group relative aspect-[2/3] overflow-hidden rounded-[14px] border border-white/5 bg-surface-container shadow-[0_12px_30px_rgba(0,0,0,0.55)] transition-all duration-300"
+        style={{ "--cs-edge-delay": edgeDelay(item.key) } as React.CSSProperties}
+      >
         <PosterImage
           src={item.poster}
           alt={item.title}

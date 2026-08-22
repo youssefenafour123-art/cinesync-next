@@ -112,7 +112,9 @@ async function waitFor(page, fn, { timeout = 45000, step = 500 } = {}) {
   await page.evaluate(() => document.querySelector('button[aria-label="Next slide"]')?.click());
   await sleep(220);
   const midTransform = await page.evaluate(() => {
-    const bd = document.querySelector('section[aria-roledescription="carousel"] .absolute.inset-0.z-0');
+    // :not(.bg-background) skips the hero's opaque base layer, which carries
+    // the same layout classes as the animated backdrop above it.
+    const bd = document.querySelector('section[aria-roledescription="carousel"] .absolute.inset-0.z-0:not(.bg-background)');
     return bd ? getComputedStyle(bd).transform : null;
   });
   await sleep(1700);
@@ -174,15 +176,27 @@ async function waitFor(page, fn, { timeout = 45000, step = 500 } = {}) {
     const inactive = document.querySelector('.hero-slide:not(.active)');
     const vw = document.querySelector('.hero-slide.active .hero-video-wrapper');
     const dot = document.querySelector('.hero-dot.active');
+    const pan = vw ? getComputedStyle(vw) : null;
+    const dotCs = dot ? getComputedStyle(dot, '::after') : null;
     return {
       inactiveTransform: inactive ? getComputedStyle(inactive).transform : null,
-      panAnim: vw ? getComputedStyle(vw).animationName : null,
-      dotAnim: dot ? getComputedStyle(dot, '::after').animationName : null,
+      panAnim: pan ? pan.animationName : null,
+      // Duration matters as much as the name. A blanket
+      // `animation-duration: 0.01ms !important` reduced-motion reset had every
+      // CSS animation in the app frozen while `animationName` still read
+      // correctly — this suite passed on the name alone and missed it.
+      panDuration: pan ? pan.animationDuration : null,
+      dotAnim: dotCs ? dotCs.animationName : null,
+      dotDuration: dotCs ? dotCs.animationDuration : null,
     };
   });
   ok('Upcoming inactive slide is offset (slides in)', up.inactiveTransform && up.inactiveTransform !== 'none', String(up.inactiveTransform).slice(0, 44));
-  ok('Upcoming hero has pan animation', up.panAnim === 'cs-hero-pan', 'animation=' + up.panAnim);
-  ok('Upcoming dot has fill animation', up.dotAnim === 'cs-dot-fill', 'animation=' + up.dotAnim);
+  ok('Upcoming hero pan animation actually runs',
+    up.panAnim === 'cs-hero-pan' && parseFloat(up.panDuration) > 1,
+    up.panAnim + ' ' + up.panDuration);
+  ok('Upcoming dot fill animation actually runs',
+    up.dotAnim === 'cs-dot-fill' && parseFloat(up.dotDuration) > 1,
+    up.dotAnim + ' ' + up.dotDuration);
   await page.screenshot({ path: OUT + '/after-upcoming.png' });
 
   // ---- 9. Background present on a tab that never feeds it ----
@@ -192,12 +206,79 @@ async function waitFor(page, fn, { timeout = 45000, step = 500 } = {}) {
   ok('poster wall present on Settings tab too', bgOnSettings > 0, bgOnSettings + ' imgs');
   await page.screenshot({ path: OUT + '/after-settings.png' });
 
+  // ---- 10. Discover hero is opaque, not a window onto the poster wall ----
   await nav(page, 'Discover');
   await sleep(3000);
   await page.screenshot({ path: OUT + '/after-discover.png' });
+  const hero = await page.evaluate(() => {
+    const sec = document.querySelector('section[aria-roledescription="carousel"]');
+    const base = sec.querySelector(':scope > .absolute.inset-0.z-0.bg-background');
+    const img = sec.querySelector('img');
+    const r = sec.getBoundingClientRect();
+    return {
+      baseBg: base ? getComputedStyle(base).backgroundColor : null,
+      imgOpacity: img ? getComputedStyle(img).opacity : null,
+      wallBehind: document
+        .elementsFromPoint(r.left + r.width * 0.7, r.top + r.height * 0.25)
+        .some((e) => e.closest && e.closest('.bg-wall')),
+    };
+  });
+  ok('Discover hero sits on an opaque base', hero.baseBg === 'rgb(5, 5, 5)', 'base=' + hero.baseBg);
+  ok('poster wall is not visible through the hero', !hero.wallBehind,
+    'artwork opacity=' + hero.imgOpacity);
+
+  // ---- 11. Animated glowing poster edges ----
+  const ring = await page.evaluate(() => {
+    const card = document.querySelector('.poster-glow');
+    const cs = card ? getComputedStyle(card, '::after') : null;
+    return cs && {
+      count: document.querySelectorAll('.poster-glow').length,
+      name: cs.animationName,
+      duration: cs.animationDuration,
+      masked: cs.maskImage !== 'none' || cs.webkitMaskImage !== 'none',
+      clickThrough: cs.pointerEvents === 'none',
+      delays: [...document.querySelectorAll('.poster-glow')]
+        .slice(0, 6)
+        .map((c) => getComputedStyle(c, '::after').animationDelay),
+    };
+  });
+  ok('posters carry an edge ring that runs',
+    !!ring && ring.name === 'cs-edge-spin' && parseFloat(ring.duration) > 1,
+    ring ? ring.count + ' cards, ' + ring.name + ' ' + ring.duration : 'none');
+  ok('ring is masked to the border and does not block clicks',
+    !!ring && ring.masked && ring.clickThrough);
+  ok('rings are staggered rather than pulsing in unison',
+    !!ring && new Set(ring.delays).size > 1, ring ? ring.delays.join(' ') : '');
+
+  const angleA = await page.evaluate(() =>
+    getComputedStyle(document.querySelector('.poster-glow'), '::after').getPropertyValue('--cs-edge-angle'));
+  await sleep(900);
+  const angleB = await page.evaluate(() =>
+    getComputedStyle(document.querySelector('.poster-glow'), '::after').getPropertyValue('--cs-edge-angle'));
+  ok('edge light sweeps (@property interpolates the angle)', angleA !== angleB,
+    angleA + ' -> ' + angleB);
+
+  // ---- 12. Returning to a tab does not replay skeletons ----
+  await nav(page, 'Settings');
+  await sleep(1500);
+  await page.evaluate(() => { window.__alive = true; });
+  await page.evaluate(() => document.querySelector('button[aria-label="CineSync home"]').click());
+  let skeleton = false;
+  for (let i = 0; i < 14; i++) {
+    if (await page.evaluate(() => !!document.querySelector('.animate-pulse.rounded-b-3xl'))) skeleton = true;
+    await sleep(60);
+  }
+  const home = await page.evaluate(() => ({
+    alive: window.__alive === true,
+    hero: document.querySelector('section[aria-roledescription="carousel"] .glow-text')?.textContent?.trim() ?? null,
+  }));
+  ok('logo does not reload the document', home.alive);
+  ok('logo returns to a populated Discover, no skeleton replay', !skeleton && !!home.hero,
+    'skeleton=' + skeleton + ' hero=' + home.hero);
 
   console.log('\n--- page errors ---');
   console.log(errors.length ? errors.slice(0, 8).join('\n') : '(none)');
+
   const failed = checks.filter((c) => !c.pass);
   console.log('\n' + (checks.length - failed.length) + '/' + checks.length + ' passed');
   await browser.close();

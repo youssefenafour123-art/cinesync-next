@@ -24,7 +24,7 @@ export function PersonModal({ id }: { id: number }) {
       label={data ? `Profile for ${data.name}` : "Person profile"}
       className="glass-panel max-w-5xl rounded-xl"
     >
-      {loading ? (
+      {loading && !data ? (
         <LoadingState label="Loading profile…" />
       ) : error || !data ? (
         <ErrorState message={error ?? "Couldn't load that profile."} onRetry={reload} />

@@ -130,8 +130,35 @@ still images for anyone who had ever touched it, with no clue as to why. "Match 
 is one click away for anyone who wants the OS to decide.
 
 The preference is stamped onto `<html>` as `data-motion` by `app/page.tsx`, because half
-these animations are CSS and CSS can only see the media query. `globals.css` gates on
-that attribute; see the block beside the reduced-motion media query.
+these animations are CSS and CSS can only see the media query.
+
+What that attribute gates is one rule: the blanket
+`animation-duration: 0.01ms !important` reduced-motion reset at the bottom of
+`globals.css`. It is the most powerful rule in the file — it collapses every CSS
+animation and transition in the app — and while it was ungated, "Full motion" only
+half-worked: GSAP and Framer honoured the setting, but the hero pan, the staggered slide
+copy, the dot timers and the poster edge light stayed frozen. Per-selector gates could
+not undo it, because `!important` on `*` beats an ordinary declaration however specific.
+Scoping that one rule fixed all of them at once.
+
+Worth knowing if you add a CSS animation here: assert on its computed
+`animation-duration`, not on `animation-name`. The name reads back correctly even when
+the reset has flattened the duration to nothing, which is exactly how this went unnoticed.
+
+### Posters and the hero
+
+Every poster carries a light travelling around its edge — a conic gradient on a
+pseudo-element masked down to its own padding box, which is the only way to get a
+gradient border that follows the card's `border-radius`. The sweep animates a
+`--cs-edge-angle` registered through `@property`; without that registration the browser
+treats the value as a string and snaps from 0° to 360° with nothing in between. Rings are
+phase-offset from a hash of the item's key, so a rail doesn't pulse in unison and there is
+no hydration mismatch from `Math.random()`.
+
+The Discover hero sits on its own opaque base layer. It had none, and its artwork sits
+below full opacity, so the remaining fraction was the poster wall showing through the
+banner — survivable while the wall was rendering at ~15% visibility, obvious once it
+wasn't.
 
 ### The backdrop
 
@@ -147,6 +174,20 @@ from 55% to 97% black, which is ~15% visibility at the centre of the screen and
 effectively zero at the edges. Nothing was broken that a debugger would show. The fix
 was the opacity/scrim balance in `globals.css`, and `scripts/verify-ux.js` now asserts
 on the *product* of those numbers rather than on the element existing.
+
+### Why tabs used to look like they reloaded
+
+`page.tsx` keys its tab container on the active tab, so every switch unmounts the old tab
+and mounts the new one. `useFetch` therefore started from nothing each time: skeletons, a
+re-fetch, and every entrance animation replaying. Returning to a tab looked like the page
+had reloaded — reported as "clicking the logo refreshes the page", which is the same code
+path, since the logo selects Discover.
+
+Nothing in the app has ever navigated: there is no `<a href>`, no router, and no
+`location` write anywhere in it. `useFetch` now keeps a session-lived cache keyed by URL,
+renders from it immediately and revalidates in the background, so a returning tab is
+populated on the first frame. Loading branches consequently test `loading && !data` rather
+than `loading` — testing `loading` alone reintroduces the flash.
 
 ## What was broken before
 

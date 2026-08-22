@@ -294,6 +294,99 @@ body {
   );
 }
 
+/* ---- Animated poster edge ----
+   A light travelling around the border of every poster.
+
+   Drawn as a conic gradient on a pseudo-element that is masked down to its own
+   padding box, which leaves a ~1.5px ring and nothing in the middle — the
+   standard way to get a gradient border, and the only one that follows the
+   card's `border-radius` without a second rounded element. The sweep is an
+   animated `--cs-edge-angle`; a custom property has to be registered with
+   `@property` before it can be interpolated, or the browser treats it as a
+   string and the animation snaps from 0 to 360 with nothing in between.
+
+   `pointer-events: none` matters: the ring covers the whole card, and without
+   it the poster would stop responding to clicks.
+
+   The rings are staggered by `animation-delay` from a card's own position so a
+   rail doesn't pulse in unison, which reads as a loading state rather than as
+   ambient life. */
+@property --cs-edge-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.poster-glow,
+.carousel-poster {
+  position: relative;
+}
+
+.poster-glow::after,
+.carousel-poster::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  pointer-events: none;
+  opacity: 0.7;
+  transition: opacity 0.35s ease;
+  background: conic-gradient(
+    from var(--cs-edge-angle),
+    transparent 0deg,
+    rgba(110, 255, 200, 1) 30deg,
+    rgba(140, 210, 255, 0.9) 68deg,
+    transparent 118deg,
+    transparent 186deg,
+    rgba(78, 222, 163, 0.75) 232deg,
+    transparent 288deg
+  );
+  /* Punches the middle out, leaving only the padding ring painted. */
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: cs-edge-spin 7s linear infinite;
+  /* Negative, so every ring starts already part-way round instead of every
+     card beginning its first sweep together. Cards that carry a `--cs-edge-delay`
+     set it from their own identity; the rest fall back to the nth-child rules
+     below. */
+  animation-delay: var(--cs-edge-delay, 0s);
+}
+
+.carousel-item:nth-child(3n + 2) .carousel-poster::after {
+  animation-delay: -2.4s;
+}
+
+.carousel-item:nth-child(3n + 3) .carousel-poster::after {
+  animation-delay: -4.7s;
+}
+
+/* Brighter under the cursor, and joined by an outer bloom — the same light,
+   read as a highlight rather than as ambience. */
+.poster-glow:hover::after,
+.carousel-item:hover .carousel-poster::after {
+  opacity: 1;
+}
+
+.poster-glow:hover,
+.carousel-item:hover .carousel-poster {
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.7),
+    0 0 26px rgba(78, 222, 163, 0.3);
+}
+
+@keyframes cs-edge-spin {
+  to {
+    --cs-edge-angle: 360deg;
+  }
+}
+
 /* ---- Animated background ----
    One fixed root holds every layer, so paint order alone decides the stack:
    orbs, poster wall, scrim, pointer light. */
@@ -461,45 +554,20 @@ body {
    `data-motion` is stamped on <html> from the same preference the GSAP and
    Framer effects read (lib/useReducedMotion.ts). Without it the CSS half of the
    app would answer to `prefers-reduced-motion` alone, and someone who chose
-   "Full motion" in Settings would still get frozen hero slides — Windows sets
-   that media query machine-wide under "Adjust for best performance", which is
-   the whole reason the override exists.
+   "Full motion" in Settings would still get frozen hero slides and a dead
+   poster edge — Windows sets that media query machine-wide under "Adjust for
+   best performance", which is the whole reason the override exists.
 
-   So: the OS preference is honoured unless the user has explicitly asked for
-   full motion, and an explicit "Still" suppresses these effects whatever the OS
-   reports.
+   The actual suppression is the blanket reset at the bottom of this file, which
+   is where the `prefers-reduced-motion` handling has always lived; gating that
+   one rule covers every CSS animation and transition in the app at once. What
+   is left here is the handful of held-still states that are not simply a
+   stopped animation.
 */
 @media (prefers-reduced-motion: reduce) {
-  :root:not([data-motion="full"]) .bg-wall,
-  :root:not([data-motion="full"]) .bg-wall-track,
-  :root:not([data-motion="full"]) .bg-orb {
-    animation: none;
-  }
-
   :root:not([data-motion="full"]) .bg-spotlight {
     display: none;
   }
-
-  :root:not([data-motion="full"]) .hero-slide,
-  :root:not([data-motion="full"]) .hero-slide.active .hero-video-wrapper,
-  :root:not([data-motion="full"]) .hero-slide.active .hero-content > *,
-  :root:not([data-motion="full"]) .hero-dot.active::after {
-    animation: none;
-    transition-property: opacity;
-    transform: none;
-  }
-}
-
-:root[data-motion="reduced"] .bg-wall,
-:root[data-motion="reduced"] .bg-wall-track,
-:root[data-motion="reduced"] .bg-orb,
-:root[data-motion="reduced"] .hero-slide,
-:root[data-motion="reduced"] .hero-slide.active .hero-video-wrapper,
-:root[data-motion="reduced"] .hero-slide.active .hero-content > *,
-:root[data-motion="reduced"] .hero-dot.active::after {
-  animation: none;
-  transition-property: opacity;
-  transform: none;
 }
 
 :root[data-motion="reduced"] .bg-spotlight {
@@ -1002,16 +1070,49 @@ body {
   }
 }
 
+/*
+   The reduced-motion reset — and the reason "Full motion" did not fully work.
+
+   This blanket `!important` rule is the standard accessibility reset, and it is
+   the single most powerful rule in the file: it collapses every CSS animation
+   and transition in the app to 0.01ms. Ungated, it fired on this machine
+   regardless of the Settings preference, which is why the hero pan, the
+   staggered slide copy, the dot timers and the poster edge light all stayed
+   frozen for someone who had explicitly asked for full motion. Per-selector
+   `data-motion` gates elsewhere could not undo it — `!important` on `*` beats
+   an ordinary declaration no matter how specific.
+
+   So it is scoped, twice over: the OS preference is honoured unless the user
+   has explicitly chosen full motion, and an explicit "Still" applies the same
+   reset whatever the OS reports. The two selector lists are duplicated rather
+   than combined because one arm lives inside a media query and the other does
+   not, and a rule cannot be in both.
+
+   JavaScript-driven motion — GSAP's ticker, Framer's inline styles — is not
+   touched by this and reads the preference directly from `useReducedMotion`.
+*/
 @media (prefers-reduced-motion: reduce) {
-  html {
+  :root:not([data-motion="full"]) {
     scroll-behavior: auto;
   }
 
-  *,
-  *::before,
-  *::after {
+  :root:not([data-motion="full"]) *,
+  :root:not([data-motion="full"]) *::before,
+  :root:not([data-motion="full"]) *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+:root[data-motion="reduced"] {
+  scroll-behavior: auto;
+}
+
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
 }

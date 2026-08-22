@@ -92,7 +92,7 @@ export function SearchModal() {
             <p className="px-3 py-10 text-center font-body-md text-body-md text-on-surface-variant">
               Type at least two characters.
             </p>
-          ) : loading ? (
+          ) : loading && !data ? (
             <p className="pulsing-text px-3 py-10 text-center font-label-md text-label-md text-on-surface-variant">
               Searching…
             </p>

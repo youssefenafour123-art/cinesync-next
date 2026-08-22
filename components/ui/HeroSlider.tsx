@@ -103,6 +103,18 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
       aria-roledescription="carousel"
       aria-label="Most watched right now"
     >
+      {/*
+        Opaque floor under the whole banner.
+
+        The section had no background of its own, and its artwork sits at 60%
+        opacity — so the remaining 40% was the ambient poster wall showing
+        straight through the hero. That was survivable while the wall was
+        rendering at ~15% visibility; now that the wall is actually visible, the
+        banner read as a translucent panel with somebody else's posters behind
+        the artwork. This is the layer the artwork composites onto instead.
+      */}
+      <div className="absolute inset-0 z-0 bg-background" />
+
       {/* Cross-fading, cross-sliding backdrop */}
       <AnimatePresence initial={false} custom={direction}>
         <motion.div
@@ -136,10 +148,16 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
             animate={reduced ? undefined : { scale: 1.1 }}
             transition={{ duration: ADVANCE_MS / 1000 + 2, ease: "linear" }}
           >
+            {/*
+              Raised from 60% now that it composites onto solid background
+              rather than onto the poster wall. The two gradients below still
+              carry the text contrast, so the artwork can afford to be brighter
+              than it was when it was doubling as a scrim.
+            */}
             <PosterImage
               src={item.backdrop || item.poster}
               alt=""
-              className="h-full w-full object-cover opacity-60"
+              className="h-full w-full object-cover opacity-80"
             />
           </motion.div>
         </motion.div>

@@ -63,7 +63,7 @@ export function MoviesTab() {
 
         {moodState.error ? (
           <ErrorState message={moodState.error} onRetry={moodState.reload} />
-        ) : moodState.loading ? (
+        ) : moodState.loading && !moodState.data ? (
           <LoadingState label="Finding the good ones…" />
         ) : moodState.data?.rail ? (
           <RailGrid rail={moodState.data.rail} />
@@ -73,7 +73,7 @@ export function MoviesTab() {
       {/* ---- Curated rails ---- */}
       {error ? (
         <ErrorState message={error} onRetry={reload} />
-      ) : loading ? (
+      ) : loading && !data ? (
         <LoadingState label="Loading curated picks…" />
       ) : (
         <div className="flex flex-col gap-gutter lg:flex-row">
@@ -138,7 +138,7 @@ function CuratedCard({ item }: { item: MediaItem }) {
     >
       <TiltCard
         onClick={() => openDetails(item)}
-        className="movie-card group relative aspect-[2/3] cursor-pointer overflow-hidden rounded border border-white/5 bg-surface-container"
+        className="movie-card poster-glow group relative aspect-[2/3] cursor-pointer overflow-hidden rounded border border-white/5 bg-surface-container"
       >
         <PosterImage src={item.poster} alt={item.title} className="h-full w-full object-cover" />
 

@@ -57,7 +57,23 @@ export function TopNav() {
       <div className="mx-auto flex w-full max-w-container-max items-center justify-between gap-6 px-margin-mobile py-4 md:px-margin-desktop">
         <button
           type="button"
-          onClick={() => setTab("discover")}
+          /*
+            Home, not a reload.
+
+            Nothing here has ever navigated — there is no <a href>, no router
+            and no location write anywhere in the app — but selecting a tab
+            unmounts the old one and mounts the new one, and until `useFetch`
+            started caching, that meant skeletons and a full replay of every
+            entrance animation. That is what "clicking the logo refreshes the
+            page" was. With the cache in place the content stays put; this
+            scrolls back to the top so the click still visibly does something,
+            including when Discover is already the active tab, where setting it
+            again is a no-op.
+          */
+          onClick={() => {
+            setTab("discover");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
           className="group flex shrink-0 items-center gap-2.5"
           aria-label="CineSync home"
         >

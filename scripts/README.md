@@ -63,13 +63,25 @@ the Arabic tab renders country and genre chips and re-queries on a country
 change; the Upcoming hero slides in, pans and fills its dot; and the wall is
 present on a tab that never feeds it.
 
-Its background assertions deserve a note. "The posters don't appear" was
+It also covers the fifth round: the Discover hero sits on an opaque base with
+the wall no longer reachable through it; posters carry an animated, staggered,
+click-through edge ring; and returning to Discover via the logo neither reloads
+the document nor replays skeletons.
+
+Two of its assertions deserve a note. "The posters don't appear" was
 diagnosed twice as a data problem and was neither time — the wall was in the
 DOM, fully loaded and animating, at ~15% effective opacity under the scrim. So
 this suite does not assert that the element exists or that the images loaded;
 both were already true while the bug was live. It asserts on the *product* of
 wall opacity, column opacity and scrim alpha, which is the number that decides
 whether a person can see it.
+
+The second is the CSS animation checks, which assert on computed
+`animation-duration` and not on `animation-name`. An ungated blanket
+`animation-duration: 0.01ms !important` reduced-motion reset had the Upcoming
+hero's pan and dot timers frozen on a machine that reports reduced motion — and
+this suite passed anyway, because `animationName` still read `cs-hero-pan`. A
+name proves a rule matched; only the duration proves anything moves.
 
 ## A note on writing assertions here
 
