@@ -1,0 +1,47 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Deploy from the Render dashboard: New → Blueprint → pick this repo. Render
+# reads this file, creates the service, and redeploys it on every push to main.
+#
+# The app is a Node.js server, not a static site: every tab is fed by a route
+# handler under app/api that talks to TMDB, Cinemeta and Wikipedia server-side,
+# and the TMDB key is deliberately kept off the browser. A static export would
+# ship none of that.
+services:
+  - type: web
+    name: cinesync
+    runtime: node
+    # Frankfurt rather than Render's Oregon default — this is the closest region
+    # to the people using it, and it is the one setting here that cannot be
+    # changed after the service exists. Moving later means recreating it.
+    region: frankfurt
+    plan: free
+    branch: main
+    # `npm ci` rather than `npm install`: it installs exactly what
+    # package-lock.json pins, so a deploy can't quietly pick up a different
+    # version of Next than the one this was verified against.
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    # `next start` binds 0.0.0.0 and reads PORT, which Render sets for us — no
+    # port flag needed in the start command.
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      # Next 16 requires >= 20.9. Pinned to the 22 LTS line rather than left to
+      # whatever Render's current default happens to be.
+      - key: NODE_VERSION
+        value: "22"
+      # Both are optional and neither is set here, because neither belongs in a
+      # public repo — `sync: false` makes Render prompt for them instead.
+      #
+      # TMDB_API_KEY: the app ships with a working fallback, so leaving this
+      # empty still runs. Set it to your own key to stop sharing a rate limit.
+      - key: TMDB_API_KEY
+        sync: false
+      # NEXT_PUBLIC_SITE_URL: the absolute origin used to resolve the social
+      # card (app/layout.tsx `metadataBase`). It can only be filled in after the
+      # first deploy, since that is when the .onrender.com hostname exists — set
+      # it then and redeploy. Until then link previews point at localhost, which
+      # affects nothing else.
+      - key: NEXT_PUBLIC_SITE_URL
+        sync: false

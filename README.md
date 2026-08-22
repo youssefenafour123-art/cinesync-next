@@ -19,6 +19,33 @@ app falls back to the key the original carried. Either way TMDB is only ever cal
 the server, so the key never reaches the browser. `OMDB_API_KEY` is optional too — see
 [Ratings and critics](#ratings-and-critics).
 
+## Deploying
+
+`render.yaml` is a Render Blueprint: **New → Blueprint** in the Render dashboard, pick this
+repo, apply. Render then redeploys on every push to `main`.
+
+It has to be a Node web service, not a static site. Every tab is fed by a route handler
+under `app/api` that talks to TMDB, Cinemeta and Wikipedia server-side — that is what keeps
+the TMDB key off the browser, and a static export ships none of it. `next start` reads
+`PORT` and binds `0.0.0.0`, which is exactly what Render provides, so the stock `npm start`
+is the whole start command.
+
+Two env vars, both optional and both left unset in the blueprint so they are entered in
+Render rather than committed:
+
+- `TMDB_API_KEY` — your own key, instead of sharing the fallback's rate limit.
+- `NEXT_PUBLIC_SITE_URL` — the absolute origin behind `metadataBase`, so social cards
+  resolve. It can only be filled in after the first deploy, because that is when the
+  hostname exists; set it and redeploy. Nothing else depends on it.
+
+`region` is the one blueprint value that cannot be changed later — moving a service between
+regions means recreating it. It is set to `frankfurt`.
+
+On the free plan the service sleeps after 15 minutes idle and the next request pays a cold
+start of roughly a minute. The rails themselves are quick after that: route handlers are
+`revalidate: 3600`, so a month of calendar data or a set of Discover rails is fetched once
+an hour rather than per visitor.
+
 ## Stack
 
 | | |
