@@ -78,7 +78,16 @@ async function waitFor(page, fn, { timeout = 45000, step = 500 } = {}) {
       total: imgs.length,
     };
   });
-  ok('poster wall visible (>25% effective at centre)', bg.effective > 0.25,
+  /*
+     A band, not a floor.
+
+     Both ends of this have been wrong in production. At 0.15 the wall was
+     invisible and reported as "the posters don't appear at all"; at 0.28 it was
+     reported as overwhelming the content in front of it. So the assertion is
+     that the effective visibility sits between the two, and it fails if a future
+     change pushes it either way.
+  */
+  ok('poster wall visible but not overwhelming', bg.effective > 0.12 && bg.effective < 0.24,
     'wall=' + bg.wallOpacity + ' col=' + bg.colOpacity + ' effective=' + bg.effective +
     ', ' + bg.loaded + '/' + bg.total + ' imgs loaded');
 
@@ -134,10 +143,28 @@ async function waitFor(page, fn, { timeout = 45000, step = 500 } = {}) {
   const q1 = await page.evaluate(() => document.querySelector('blockquote p')?.textContent?.trim());
   const cite1 = await page.evaluate(() => document.querySelector('blockquote cite')?.textContent?.trim());
   ok('quote renders with citation', !!q1 && !!cite1, String(q1).slice(0, 46) + '... -- ' + cite1);
-  await page.evaluate(() => document.querySelector('button[aria-label="Next quote"]')?.click());
-  await sleep(1100);
-  const q2 = await page.evaluate(() => document.querySelector('blockquote p')?.textContent?.trim());
-  ok('quote rotates', q1 !== q2, String(q2).slice(0, 46) + '...');
+
+  // No controls by design — the strip advances on its own, so this waits out
+  // one interval rather than clicking anything. Nothing hovers the footer here,
+  // which would pause it.
+  const controls = await page.evaluate(() =>
+    [...document.querySelectorAll('button')]
+      .filter((b) => /quote/i.test(b.getAttribute('aria-label') || '')).length);
+  ok('quote strip exposes no user controls', controls === 0, controls + ' quote buttons');
+
+  const q2 = await waitFor(
+    page,
+    (() => {
+      const before = q1;
+      return new Function(
+        'return (() => { const p = document.querySelector("blockquote p");' +
+          'const t = p && p.textContent.trim();' +
+          'return t && t !== ' + JSON.stringify(before) + ' ? t : null; })()',
+      );
+    })(),
+    { timeout: 20000, step: 700 },
+  );
+  ok('quote advances on its own', !!q2, String(q2).slice(0, 46) + '...');
 
   // ---- 7. Arabic tab ----
   ok('Arabic tab in nav', await nav(page, 'Arabic'));

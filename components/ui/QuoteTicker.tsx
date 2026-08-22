@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { QUOTES } from "@/lib/quotes";
 import { useReducedMotion } from "@/lib/useReducedMotion";
@@ -19,9 +19,12 @@ const ROTATE_MS = 11_000;
  *   the server's markup. So the first paint is always `QUOTES[0]` on both
  *   sides, and the shuffle is applied in an effect — by which point the
  *   cross-fade makes the swap look deliberate.
- * - **It pauses on hover and focus.** Unlike the hero banner, this is a block
- *   of text someone may be part-way through reading, and it's small enough
- *   that a resting cursor over it is a real signal rather than an accident.
+ * - **It advances on its own and offers no controls.** It is a closing flourish,
+ *   not something to operate; arrows on it made the footer look like another
+ *   carousel competing with the two real ones. It still pauses while the
+ *   pointer rests on it — that is not a control, it is the one thing standing
+ *   between a reader half-way through a long quote and losing it, and WCAG
+ *   2.2.2 wants a way to stop auto-updating text.
  * - **It is a `<blockquote>` with a `<cite>`,** and the rotation is announced
  *   politely, so the strip is a quotation to a screen reader rather than a
  *   decorative string that changes on its own.
@@ -46,15 +49,11 @@ export function QuoteTicker() {
     setOrder(next);
   }, []);
 
-  const advance = useCallback((step: number) => {
-    setIndex((i) => (i + step + QUOTES.length) % QUOTES.length);
-  }, []);
-
   useEffect(() => {
     if (paused) return;
-    const t = setInterval(() => advance(1), ROTATE_MS);
+    const t = setInterval(() => setIndex((i) => (i + 1) % QUOTES.length), ROTATE_MS);
     return () => clearInterval(t);
-  }, [paused, advance, index]);
+  }, [paused]);
 
   const quote = useMemo(() => QUOTES[order[index] ?? 0], [order, index]);
 
@@ -80,13 +79,17 @@ export function QuoteTicker() {
         a page feel unstable.
       */}
       <div className="flex min-h-[168px] flex-col items-center justify-center sm:min-h-[152px]">
+        {/* Slides in from the right and leaves to the left — always the same
+            way round, because nothing steers it and a direction that never
+            changes reads as a procession rather than as a control someone
+            forgot to press. */}
         <AnimatePresence mode="wait">
           <motion.blockquote
             key={`${order[index]}-${index}`}
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: 14, filter: "blur(4px)" }}
-            animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0, filter: "blur(0px)" }}
-            exit={reduced ? { opacity: 0 } : { opacity: 0, y: -14, filter: "blur(4px)" }}
-            transition={{ duration: reduced ? 0 : 0.55, ease: [0.22, 1, 0.36, 1] }}
+            initial={reduced ? { opacity: 0 } : { opacity: 0, x: 60, filter: "blur(5px)" }}
+            animate={reduced ? { opacity: 1 } : { opacity: 1, x: 0, filter: "blur(0px)" }}
+            exit={reduced ? { opacity: 0 } : { opacity: 0, x: -60, filter: "blur(5px)" }}
+            transition={{ duration: reduced ? 0 : 0.7, ease: [0.22, 1, 0.36, 1] }}
             className="flex flex-col items-center gap-4"
           >
             <p className="text-balance font-display-md text-[19px] italic leading-relaxed text-on-surface/90 md:text-[24px]">
@@ -113,23 +116,17 @@ export function QuoteTicker() {
         {quote.text} — {quote.speaker}, {quote.title} ({quote.year})
       </p>
 
-      <div className="mt-4 flex items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={() => advance(-1)}
-          aria-label="Previous quote"
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary"
-        >
-          <Icon name="chevron_left" className="text-[18px]" />
-        </button>
-        <button
-          type="button"
-          onClick={() => advance(1)}
-          aria-label="Next quote"
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary"
-        >
-          <Icon name="chevron_right" className="text-[18px]" />
-        </button>
+      {/* A hairline that fills over the interval. Not a control — there is
+          nothing to click — just something that makes the change look intended
+          rather than sudden. */}
+      <div className="mx-auto mt-5 h-px w-24 overflow-hidden rounded-full bg-white/10">
+        <motion.div
+          key={`bar-${index}`}
+          className="h-full bg-primary/50"
+          initial={{ width: reduced || paused ? "100%" : 0 }}
+          animate={{ width: "100%" }}
+          transition={{ duration: reduced || paused ? 0 : ROTATE_MS / 1000, ease: "linear" }}
+        />
       </div>
     </section>
   );

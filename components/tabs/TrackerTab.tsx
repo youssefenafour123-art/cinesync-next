@@ -147,7 +147,10 @@ function TrackerCard({ item }: { item: MediaItem }) {
           <div className="carousel-desc mt-1.5 font-semibold text-white/85">
             {item.director ? (
               <>
-                Dir: {item.director}
+                {item.directorLabel === "Creator" || item.directorLabel === "Creators"
+                  ? "Created by"
+                  : "Dir"}
+                : {item.director}
                 <br />
               </>
             ) : null}

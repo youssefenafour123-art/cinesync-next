@@ -46,6 +46,8 @@ export interface TmdbListItem {
 
 interface TmdbDetail {
   runtime?: number;
+  /** Series only. The people who actually created the show. */
+  created_by?: { id?: number; name?: string; profile_path?: string | null }[];
   episode_run_time?: number[];
   genres?: { name: string }[];
   credits?: {
@@ -66,6 +68,18 @@ async function tmdb<T>(path: string, params: Record<string, string> = {}, revali
   if (!res.ok) throw new Error(`TMDB ${path} → ${res.status}`);
   return (await res.json()) as T;
 }
+
+/**
+ * The raw request helper, exposed for `lib/calendar.ts`.
+ *
+ * The calendar needs endpoints nothing else here touches — season episode
+ * lists, air-date discovery windows — and reimplementing the key handling and
+ * revalidation in a second file is how the two drift apart.
+ */
+export { tmdb as tmdbFetch };
+
+/** TMDB's image CDN root, so callers can build their own poster/still URLs. */
+export const TMDB_IMAGE = IMG;
 
 export function isoDate(offsetMonths = 0): string {
   const d = new Date();
@@ -115,9 +129,48 @@ async function enrich(raw: TmdbListItem, kind: MediaKind): Promise<MediaItem> {
     const crew = detail.credits?.crew ?? [];
     const castList = detail.credits?.cast ?? [];
 
-    const helm =
-      crew.find((c) => c.job === "Director") ?? crew.find((c) => c.job === "Executive Producer");
-    item.director = helm?.name;
+    /*
+       Who made this, accurately.
+
+       The old line was `crew.find(job === "Director") ?? crew.find(job ===
+       "Executive Producer")`, and both halves of it were wrong.
+
+       For a series, TMDB's series-level crew almost never contains a Director —
+       episodes have directors, shows do not — so it fell through to the
+       Executive Producer *and displayed them under a "Director" heading*.
+       Breaking Bad was credited to Michelle MacLaren rather than Vince
+       Gilligan, Game of Thrones to David Nutter rather than Benioff and Weiss,
+       Chernobyl to Carolyn Strauss rather than Craig Mazin, The Wire to Nina K.
+       Noble rather than David Simon. Every one of those is a real person who
+       worked on the show and did not do the job the label claimed. `created_by`
+       is the field that answers this question for television.
+
+       For a film, `find` returned the first of several directors, so
+       co-directed work lost half its authorship: "Daniel Scheinert" for
+       Everything Everywhere All at Once, "Lana Wachowski" for The Matrix,
+       "Anthony Russo" for Endgame, "Joel Coen" for No Country for Old Men.
+
+       `directorLabel` travels with the name so the UI can say "Creator",
+       "Directors" or "Director" instead of assuming.
+    */
+    if (kind === "series") {
+      const creators = (detail.created_by ?? []).map((c) => c.name).filter(Boolean) as string[];
+      if (creators.length) {
+        item.director = creators.join(", ");
+        item.directorLabel = creators.length > 1 ? "Creators" : "Creator";
+      }
+    } else {
+      const directors = crew
+        .filter((c) => c.job === "Director" && c.name)
+        .map((c) => c.name as string);
+      // Dedupe: TMDB lists someone twice when they are credited in two
+      // departments, and "Joel Coen, Joel Coen" is its own kind of wrong.
+      const unique = [...new Set(directors)];
+      if (unique.length) {
+        item.director = unique.join(", ");
+        item.directorLabel = unique.length > 1 ? "Directors" : "Director";
+      }
+    }
     item.cast = castList.slice(0, 3).map((c) => c.name).filter(Boolean).join(", ") || undefined;
 
     // Keep ids alongside names so the details modal can open a profile.
@@ -125,6 +178,20 @@ async function enrich(raw: TmdbListItem, kind: MediaKind): Promise<MediaItem> {
     const KEY_CREW = /^(Director|Screenplay|Writer|Story|Creator)$/;
     const seenPeople = new Set<number>();
     const people: CreditedPerson[] = [];
+
+    // Series creators are not in `credits.crew`, so they have to be added by
+    // hand or the person whose show it is isn't clickable on their own show.
+    for (const c of detail.created_by ?? []) {
+      if (!c.id || !c.name || seenPeople.has(c.id)) continue;
+      seenPeople.add(c.id);
+      people.push({
+        tmdbId: c.id,
+        name: c.name,
+        role: "Creator",
+        profile: c.profile_path ? `${IMG}/w185${c.profile_path}` : undefined,
+        isCrew: true,
+      });
+    }
 
     for (const c of crew) {
       if (!c.id || !c.name || !KEY_CREW.test(c.job ?? "") || seenPeople.has(c.id)) continue;
@@ -341,20 +408,52 @@ export { curate };
  * Search
  * ------------------------------------------------------------------ */
 
-export async function searchMulti(query: string): Promise<SearchResults> {
-  const data = await tmdb<{ results?: TmdbListItem[] }>(
-    "/search/multi",
-    { query, include_adult: "false" },
-    600,
-  );
+/**
+ * Global search.
+ *
+ * The ranking here is deliberately *no ranking at all* — TMDB's own result
+ * order is kept.
+ *
+ * It used to re-sort by `vote_count` descending, on the reasoning that this
+ * stops a query like "the" surfacing obscure shorts. What it actually did was
+ * make unreleased films unfindable, because a film that has not come out has
+ * zero votes by definition and sank below every established title with a
+ * similar name before the list was cut to eight. Searching "The Odyssey"
+ * returned four older films of that name and not Nolan's; anything upcoming was
+ * only visible when the query was so specific that nothing else matched.
+ *
+ * TMDB's own ordering is already a relevance-and-popularity blend, and it puts
+ * anticipated titles where they belong — "Avengers" returns Doomsday first,
+ * "Dune" surfaces Part Three, "Spider-Man" leads with Brand New Day. Sorting on
+ * top of it only ever made things worse: an exact-title bonus strong enough to
+ * lift Nolan's Odyssey also lifted a 1967 Spider-Man cartoon over No Way Home,
+ * and a positional nudge put "Breaking Bad Wolf" above El Camino.
+ *
+ * `limit` is generous because the modal shows the first few and reveals the
+ * rest when the query is submitted — one request serves both, since
+ * enrichment runs in parallel and costs latency once rather than per title.
+ */
+export async function searchMulti(query: string, limit = 24): Promise<SearchResults> {
+  // Two pages, because page one is 20 results across films, series *and*
+  // people, which can leave very few titles for a name-heavy query.
+  const [first, second] = await Promise.all([
+    tmdb<{ results?: TmdbListItem[]; total_pages?: number }>(
+      "/search/multi",
+      { query, include_adult: "false", page: "1" },
+      600,
+    ),
+    tmdb<{ results?: TmdbListItem[] }>(
+      "/search/multi",
+      { query, include_adult: "false", page: "2" },
+      600,
+    ).catch(() => ({ results: [] as TmdbListItem[] })),
+  ]);
 
-  const results = data.results ?? [];
+  const results = [...(first.results ?? []), ...(second.results ?? [])];
 
-  // Rank titles by vote weight so "the" doesn't surface obscure shorts first.
   const titleRaw = results
     .filter((r) => (r.media_type === "movie" || r.media_type === "tv") && r.poster_path)
-    .sort((a, b) => (b.vote_count ?? 0) - (a.vote_count ?? 0))
-    .slice(0, 8);
+    .slice(0, limit);
 
   const titles = await Promise.all(
     titleRaw.map((r) => enrich(r, r.media_type === "tv" ? "series" : "movie")),
@@ -362,8 +461,7 @@ export async function searchMulti(query: string): Promise<SearchResults> {
 
   const people = results
     .filter((r) => r.media_type === "person")
-    .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
-    .slice(0, 6)
+    .slice(0, 8)
     .map((p) => ({
       tmdbId: p.id,
       name: p.name ?? "Unknown",

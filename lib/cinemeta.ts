@@ -36,7 +36,19 @@ function toMediaItem(meta: CinemetaMeta, kind: MediaKind): MediaItem {
     description: meta.description,
     runtime: meta.runtime,
     genres: meta.genres,
-    director: meta.director?.join(", "),
+    /*
+       Cinemeta's `director` is IMDb's, which is right for a film and misleading
+       for a series — on a show it is whoever directed some episode, not the
+       person whose show it is. So it is only carried for films; TMDB's
+       `created_by` answers the question for television. See `enrich` in tmdb.ts.
+    */
+    director: kind === "movie" && meta.director?.length ? meta.director.join(", ") : undefined,
+    directorLabel:
+      kind === "movie" && meta.director?.length
+        ? meta.director.length > 1
+          ? "Directors"
+          : "Director"
+        : undefined,
     cast: meta.cast?.slice(0, 6).join(", "),
     trailerKey: trailer?.source,
   };

@@ -47,6 +47,18 @@ export async function GET(req: Request) {
     ...(tmdb ?? ({} as MediaItem)),
     ...(cinemeta ?? ({} as MediaItem)),
     people: tmdb?.people ?? cinemeta?.people,
+    /*
+       Authorship comes from TMDB first.
+
+       The spread above puts Cinemeta second, so without these two lines its
+       `director` silently overwrote TMDB's — and Cinemeta has no notion of a
+       series creator, so a show would come back credited to whoever directed an
+       episode. TMDB's value is the one that knows the difference between a film
+       with two directors and a series with a creator, and it carries the label
+       that says which it is.
+    */
+    director: tmdb?.director ?? cinemeta?.director,
+    directorLabel: tmdb?.director ? tmdb.directorLabel : cinemeta?.directorLabel,
     tmdbId: tmdbId ?? undefined,
     imdbId: imdbId ?? tmdb?.imdbId ?? cinemeta?.imdbId,
     trailerKey: cinemeta?.trailerKey ?? tmdb?.trailerKey,

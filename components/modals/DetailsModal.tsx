@@ -121,8 +121,12 @@ export function DetailsModal({ item }: { item: MediaItem }) {
         <div className="mb-8 flex flex-wrap items-center gap-6 border-b border-white/10 pb-6">
           {full.director ? (
             <div>
+              {/* "Creator" for a series, "Directors" for co-directed films. The
+                  heading used to be hardcoded to "Director" over whatever name
+                  happened to be there, which is how an executive producer ended
+                  up credited with directing Breaking Bad. */}
               <span className="mb-1 block font-label-md text-label-md uppercase tracking-widest text-primary">
-                Director
+                {full.directorLabel ?? "Director"}
               </span>
               <span className="font-body-md text-body-md text-on-surface">{full.director}</span>
             </div>

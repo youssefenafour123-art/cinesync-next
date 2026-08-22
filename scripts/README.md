@@ -1,6 +1,6 @@
 # Verification scripts
 
-Three Puppeteer suites that drive the running app and assert real behaviour —
+Four Puppeteer suites that drive the running app and assert real behaviour —
 they were used to verify the rebuild and every feature added on top of it.
 
 They are **not** wired into `npm test`, because Puppeteer isn't a dependency of
@@ -27,6 +27,7 @@ set OUT=%TEMP%
 node scripts/verify-core.js
 node scripts/verify-features.js
 node scripts/verify-ux.js
+node scripts/verify-data.js
 ```
 
 Both exit non-zero on failure and write screenshots into `OUT`.
@@ -82,6 +83,14 @@ The second is the CSS animation checks, which assert on computed
 hero's pan and dot timers frozen on a machine that reports reduced motion — and
 this suite passed anyway, because `animationName` still read `cs-hero-pan`. A
 name proves a rule matched; only the duration proves anything moves.
+
+**`verify-data.js`** — correctness of what the app *says*, plus the calendar:
+an unreleased title is findable and flagged; Enter expands to the full result
+list; a submitted query is remembered; a series is credited to its creator and
+not to an executive producer; the quote strip has no controls; the poster wall
+sits inside its visibility band; and the calendar renders a month grid, details
+a day, shows season/episode codes for episode drops, moves between months and
+filters films out.
 
 ## A note on writing assertions here
 

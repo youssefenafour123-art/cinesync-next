@@ -4,7 +4,7 @@ Discover movies, anime and Arabic cinema, then sync your IMDb watchlist into you
 library.
 
 A Next.js rebuild of the original single-file `index.html` + `server.js` app that lived in
-`../imdb to stremio`. Same OLED-black/emerald design, now seven tabs — rebuilt so the
+`../imdb to stremio`. Same OLED-black/emerald design, now eight tabs — rebuilt so the
 features actually work.
 
 ## Running it
@@ -75,8 +75,68 @@ returned `authKey` is kept, in `localStorage`.
 | Anime | TMDB discover, genre 16 + Japanese — top rated, airing, upcoming, hidden gems |
 | Arabic | TMDB discover, `with_original_language=ar` + origin country, filtered to Cinemeta |
 | Upcoming | TMDB discover — upcoming and last two months, with trailers |
+| Calendar | TMDB discover + per-season episode air dates, a month at a time |
 | My Library | your connected sources → Stremio `datastorePut` |
 | Settings | `localStorage` |
+
+### The release calendar
+
+Upcoming answers "what's coming soon" as two rails. Calendar answers "what lands on the
+14th", which needs a grid — and, for a series, *which episodes* drop on which day, by
+season and episode number.
+
+Films are the easy half: one `/discover/movie` window on `primary_release_date`. Episodes
+are not. TMDB has no "what airs on this date" endpoint; `/discover/tv` with an `air_date`
+window returns *shows* with an episode somewhere in the range and says nothing about
+which one or which day. So each show costs two more requests — fetch it to find which
+seasons could overlap the window, then fetch those seasons, whose episode lists do carry
+a per-episode `air_date`.
+
+Three details are load-bearing:
+
+- **Season selection looks at the window, not at now.** Using `last_episode_to_air` alone
+  resolves the currently-airing season, so browsing back a year would report no episodes.
+- **Strip programming is excluded** (TMDB genres 10763/10767/10764/10766). Without the
+  filter, "popular series with an episode this month" is a nightly news bulletin at
+  S58E183 and a daily reality show at S13E136 — more than half the month. With it, the
+  same query returns Reacher, House of the Dragon, Silo and Ted Lasso.
+- **A binge release is one entry, not five.** Episodes dropping on the same day are
+  grouped, so one show can't fill a day cell.
+
+See `lib/calendar.ts`.
+
+### Credits
+
+`director` is the film's director — *all* of them — or, for a series, its creator, and
+`directorLabel` says which. That is worth stating because it was wrong for a long time in
+a way nothing surfaced: the field was filled by
+`crew.find(job === "Director") ?? crew.find(job === "Executive Producer")`, and TMDB's
+series-level crew almost never contains a Director. So every show was credited to an
+executive producer under a "Director" heading — Breaking Bad to Michelle MacLaren rather
+than Vince Gilligan, Chernobyl to Carolyn Strauss rather than Craig Mazin. Real people,
+credited with a job they did not do. The film half dropped co-directors: "Lana Wachowski"
+for The Matrix, "Joel Coen" for No Country for Old Men.
+
+Cinemeta's `director` is only used for films, because on a show it is whoever directed
+some episode; `/api/enrich` takes TMDB's value first, which is the one that knows the
+difference.
+
+### Search
+
+The result order is TMDB's own, deliberately unmodified. It used to be re-sorted by
+`vote_count` descending, which made unreleased films unfindable — a film that has not come
+out has zero votes by definition, so it sank below every established title with a similar
+name before the list was cut to eight. "The Odyssey" returned four older films of that
+name and not Nolan's.
+
+TMDB's ordering is already a relevance-and-popularity blend and puts anticipated titles
+where they belong. Every attempt to improve on it made something else worse: an
+exact-title bonus strong enough to lift Nolan's Odyssey also lifted a 1967 Spider-Man
+cartoon over No Way Home.
+
+Typing shows the best few; Enter opens the full list, which is what makes a title outside
+the top few reachable. One request serves both — enrichment runs in parallel, so it costs
+latency once rather than per title. Past queries are kept in `localStorage`.
 
 ### Arabic cinema
 
@@ -144,6 +204,13 @@ Scoping that one rule fixed all of them at once.
 Worth knowing if you add a CSS animation here: assert on its computed
 `animation-duration`, not on `animation-name`. The name reads back correctly even when
 the reset has flattened the duration to nothing, which is exactly how this went unnoticed.
+
+### Quotes
+
+The footer strip advances on its own and has no controls: it is a closing flourish, not
+something to operate, and arrows on it made the footer look like a third carousel. It
+still pauses while the pointer rests on it, which is not a control and is what WCAG 2.2.2
+asks for.
 
 ### Posters and the hero
 

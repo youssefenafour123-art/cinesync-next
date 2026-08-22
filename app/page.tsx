@@ -15,6 +15,7 @@ import { DiscoverTab } from "@/components/tabs/DiscoverTab";
 import { MoviesTab } from "@/components/tabs/MoviesTab";
 import { AnimeTab } from "@/components/tabs/AnimeTab";
 import { ArabicTab } from "@/components/tabs/ArabicTab";
+import { CalendarTab } from "@/components/tabs/CalendarTab";
 import { TrackerTab } from "@/components/tabs/TrackerTab";
 import { LibraryTab } from "@/components/tabs/LibraryTab";
 import { SettingsTab } from "@/components/tabs/SettingsTab";
@@ -115,6 +116,7 @@ export default function Home() {
           {tab === "anime" && <AnimeTab />}
           {tab === "arabic" && <ArabicTab />}
           {tab === "tracker" && <TrackerTab />}
+          {tab === "calendar" && <CalendarTab />}
           {tab === "library" && <LibraryTab />}
           {tab === "settings" && <SettingsTab />}
         </motion.div>

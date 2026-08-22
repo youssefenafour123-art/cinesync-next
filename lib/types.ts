@@ -19,7 +19,14 @@ export interface MediaItem {
   /** How many votes the rating is based on — used to weight recommendations. */
   voteCount?: number;
   description?: string;
+  /** Director(s) for a film, creator(s) for a series. Never an approximation. */
   director?: string;
+  /**
+   * What `director` actually is: "Director", "Directors", "Creator" or
+   * "Creators". Series have creators, not directors, and labelling an
+   * executive producer as the director is how this field used to be wrong.
+   */
+  directorLabel?: string;
   cast?: string;
   /** Credited people with TMDB ids, so the UI can open their profile. */
   people?: CreditedPerson[];
@@ -143,6 +150,44 @@ export interface Scores {
     url?: string;
     createdAt?: string;
   }[];
+}
+
+/* ---- Release calendar ---- */
+
+/** One episode dropping on a given day. */
+export interface CalendarEpisode {
+  seasonNumber: number;
+  episodeNumber: number;
+  /** "S04E01" — what people actually say out loud. */
+  code: string;
+  name: string;
+  isPremiere: boolean;
+  isFinale: boolean;
+  overview?: string;
+}
+
+/**
+ * One thing landing on one day.
+ *
+ * A series that drops three episodes at once is a single entry carrying three
+ * episodes, not three entries — that is how a binge release reads on a
+ * calendar, and it keeps a day cell from being filled by one show.
+ */
+export interface CalendarEntry {
+  key: string;
+  tmdbId: number;
+  /** Present for series (fetched anyway); movies resolve theirs on open. */
+  imdbId?: string;
+  title: string;
+  kind: MediaKind;
+  poster?: string;
+  backdrop?: string;
+  /** ISO `YYYY-MM-DD`, in TMDB's own dating. */
+  date: string;
+  rating?: string;
+  overview?: string;
+  /** Series only. Sorted by episode number. */
+  episodes?: CalendarEpisode[];
 }
 
 /* ---- Library sources (persisted in localStorage) ---- */

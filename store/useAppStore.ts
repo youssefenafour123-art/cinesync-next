@@ -14,7 +14,8 @@ export const TABS = [
   { id: "movies", label: "Movies", icon: "movie" },
   { id: "anime", label: "Anime", icon: "auto_awesome" },
   { id: "arabic", label: "Arabic", icon: "public" },
-  { id: "tracker", label: "Upcoming", icon: "calendar_month" },
+  { id: "tracker", label: "Upcoming", icon: "upcoming" },
+  { id: "calendar", label: "Calendar", icon: "calendar_month" },
   { id: "library", label: "My Library", short: "Library", icon: "subscriptions" },
   { id: "settings", label: "Settings", icon: "settings" },
 ] as const;

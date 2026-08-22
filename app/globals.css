@@ -439,7 +439,14 @@ body {
      simply could not be seen. Raising the wall and lightening the scrim ramp
      together is what actually puts the posters on screen.
   */
-  opacity: 0.72;
+  /*
+     Tuned twice. It was 0.34, which under the scrim came out at ~15% visibility
+     — the wall was loaded and animating and simply could not be seen. 0.72
+     fixed that and overshot: with the scrim lightened at the same time, the
+     posters started competing with the content in front of them. This is the
+     setting between the two.
+  */
+  opacity: 0.58;
   transform-style: preserve-3d;
   will-change: transform;
 }
@@ -531,7 +538,7 @@ body {
 /* Narrow screens put content directly over the busiest part of the wall. */
 @media (max-width: 767px) {
   .bg-wall {
-    opacity: 0.5;
+    opacity: 0.38;
     gap: 16px;
   }
 

@@ -27,7 +27,7 @@ const MOBILE_COLUMNS = 5;
 /** How far from a column the pointer still lifts it, as a share of the viewport. */
 const PROXIMITY_REACH = 0.34;
 /** Column opacity with the pointer nowhere near it. */
-const COLUMN_REST_OPACITY = 0.58;
+const COLUMN_REST_OPACITY = 0.52;
 
 /**
  * The living backdrop: drifting aurora orbs and a wall of posters that

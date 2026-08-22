@@ -78,7 +78,13 @@ export function HeroCarousel({ items }: { items: MediaItem[] }) {
               <div className="hero-desc">
                 {item.director ? (
                   <>
-                    <strong>Dir:</strong> {item.director}
+                    <strong>
+                      {item.directorLabel === "Creator" || item.directorLabel === "Creators"
+                        ? "Created by"
+                        : "Dir"}
+                      :
+                    </strong>{" "}
+                    {item.director}
                     <br />
                   </>
                 ) : null}
