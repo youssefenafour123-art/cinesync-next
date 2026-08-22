@@ -294,13 +294,21 @@ body {
   );
 }
 
-/* ---- Animated background ---- */
-.bg-orbs {
+/* ---- Animated background ----
+   One fixed root holds every layer, so paint order alone decides the stack:
+   orbs, poster wall, scrim, pointer light. */
+.bg-root {
   position: fixed;
   inset: 0;
-  z-index: -2;
+  z-index: -1;
   overflow: hidden;
   pointer-events: none;
+}
+
+.bg-orbs {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
   opacity: 0.15;
   filter: grayscale(100%);
 }
@@ -313,76 +321,119 @@ body {
   will-change: transform;
 }
 
-.bg-posters {
-  position: fixed;
-  inset: -50%;
-  z-index: -1;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-content: center;
-  gap: 30px;
-  opacity: 0.15;
-  pointer-events: none;
-  will-change: transform;
-  mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 1) 30%, rgba(0, 0, 0, 0) 80%);
-  -webkit-mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 1) 30%, rgba(0, 0, 0, 0) 80%);
+/* The perspective lives here rather than on .bg-wall so the wall's own
+   rotation is what tilts, not the viewing frustum. */
+.bg-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  perspective: 1400px;
 }
 
-.bg-posters img {
-  width: 140px;
-  height: 210px;
+/* Overscanned so the wall's own edges never come into view as it tilts, and
+   wide enough that twelve columns run past both sides of the stage instead of
+   sitting in a band down the middle. */
+.bg-wall {
+  position: absolute;
+  inset: -50% -12%;
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+  opacity: 0.34;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.bg-wall-col {
+  flex: 0 0 auto;
+  width: 156px;
+}
+
+.bg-wall-track {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  will-change: transform;
+}
+
+.bg-wall img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 3;
   object-fit: cover;
   border-radius: 12px;
+  background: #101010;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9);
-  filter: saturate(1.5) contrast(1.1);
+  filter: saturate(1.4) contrast(1.05);
 }
 
-.bg-posters img:nth-child(even) {
-  transform: translateY(60px);
-}
-
-.bg-posters img:nth-child(3n) {
-  transform: translateY(-40px);
-  width: 160px;
-  height: 240px;
-}
-
-.bg-posters img:nth-child(5n) {
-  transform: translateY(30px) rotate(-5deg);
-  opacity: 0.8;
-  box-shadow: 0 0 30px var(--primary);
-}
-
-.bg-posters img:nth-child(7n) {
-  transform: translateY(-20px) rotate(3deg) scale(1.15);
-  box-shadow: 0 0 40px var(--secondary);
-}
-
-/* Sits between the poster wall and the content so the wall reads as texture
-   rather than competing with text. Same z-index as .bg-posters and later in
-   the DOM, so it paints over the posters but still behind page content. */
+/* Keeps the wall as texture rather than something competing with the text on
+   top of it. Static — the pointer moves .bg-spotlight instead, because
+   repainting a full-screen gradient every frame is what makes this effect
+   expensive. */
 .bg-scrim {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: -1;
-  pointer-events: none;
   background: radial-gradient(
-    ellipse at center,
-    rgba(5, 5, 5, 0.5) 0%,
-    rgba(5, 5, 5, 0.82) 65%,
-    rgba(5, 5, 5, 0.96) 100%
+    ellipse at 50% 42%,
+    rgba(5, 5, 5, 0.55) 0%,
+    rgba(5, 5, 5, 0.84) 55%,
+    rgba(5, 5, 5, 0.97) 100%
+  );
+}
+
+/* Screen-blended, so it lifts the posters back out of the scrim as it passes
+   over them. Offset by half its own size so a plain translate centres it on
+   the pointer. Revealed on the first pointermove — touch devices never get a
+   blob of light parked in the middle of the screen. */
+.bg-spotlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 56vmax;
+  height: 56vmax;
+  margin: -28vmax 0 0 -28vmax;
+  border-radius: 50%;
+  opacity: 0;
+  mix-blend-mode: screen;
+  will-change: transform;
+  background: radial-gradient(
+    circle closest-side,
+    rgba(120, 200, 255, 0.16) 0%,
+    rgba(94, 231, 223, 0.08) 42%,
+    transparent 70%
   );
 }
 
 /* Narrow screens put content directly over the busiest part of the wall. */
 @media (max-width: 767px) {
-  .bg-posters {
-    opacity: 0.08;
+  .bg-wall {
+    opacity: 0.18;
+    gap: 16px;
+  }
+
+  .bg-wall-col {
+    width: 108px;
+  }
+
+  .bg-wall-track {
+    gap: 16px;
   }
 
   .bg-scrim {
-    background: rgba(5, 5, 5, 0.82);
+    background: rgba(5, 5, 5, 0.86);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-wall,
+  .bg-wall-track,
+  .bg-orb {
+    animation: none;
+  }
+
+  .bg-spotlight {
+    display: none;
   }
 }
 
@@ -740,20 +791,27 @@ body {
   }
 }
 
-.search-input {
-  background: #181818;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--color-on-surface);
-  border-radius: 999px;
-  padding: 10px 18px;
-  font-size: 0.9rem;
-  outline: none;
-  transition: box-shadow 0.25s ease, border-color 0.25s ease;
-}
+/* In @layer components, not at the top level: `@import "tailwindcss"` puts the
+   utilities layer last, so an unlayered `.search-input { padding: 10px 18px }`
+   outranks a `pl-11` utility on the same element no matter the class order.
+   That is what pushed the anime search field's text underneath its own
+   magnifier icon. Layered, the utility wins as intended. */
+@layer components {
+  .search-input {
+    background: #181818;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--color-on-surface);
+    border-radius: 999px;
+    padding: 10px 18px;
+    font-size: 0.9rem;
+    outline: none;
+    transition: box-shadow 0.25s ease, border-color 0.25s ease;
+  }
 
-.search-input:focus {
-  border-color: rgba(78, 222, 163, 0.5);
-  box-shadow: 0 0 0 3px rgba(78, 222, 163, 0.15);
+  .search-input:focus {
+    border-color: rgba(78, 222, 163, 0.5);
+    box-shadow: 0 0 0 3px rgba(78, 222, 163, 0.15);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

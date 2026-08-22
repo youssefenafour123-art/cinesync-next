@@ -3,6 +3,11 @@
 import { useState } from "react";
 import { useSourcesStore, type AppSettings } from "@/store/useSourcesStore";
 import { useAppStore } from "@/store/useAppStore";
+import {
+  setMotionPreference,
+  useMotionPreference,
+  type MotionPreference,
+} from "@/lib/useReducedMotion";
 import { Icon } from "@/components/ui/Icon";
 
 const SECTIONS = [
@@ -149,6 +154,10 @@ export function SettingsTab() {
                 );
               }}
             />
+
+            <div className="mt-8 border-t border-white/10 pt-6">
+              <MotionControl />
+            </div>
           </section>
 
           {/* ---- API ---- */}
@@ -327,3 +336,65 @@ function Toggle({
 }
 
 export type { AppSettings };
+
+const MOTION_OPTIONS: { id: MotionPreference; label: string; hint: string }[] = [
+  { id: "system", label: "Match system", hint: "Follows your reduced-motion setting" },
+  { id: "full", label: "Full motion", hint: "Always animate the backdrop" },
+  { id: "reduced", label: "Still", hint: "Never animate the backdrop" },
+];
+
+/**
+ * Motion override.
+ *
+ * The animated poster wall honours `prefers-reduced-motion`, as it should —
+ * but Windows sets that flag for the whole machine under "Adjust for best
+ * performance", so people who never opted out of animation get a frozen
+ * backdrop and no way to say otherwise. This is that way.
+ */
+function MotionControl() {
+  const preference = useMotionPreference();
+  const systemReduced =
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  return (
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+      <div>
+        <h4 className="font-body-lg text-body-lg text-on-surface">Background Motion</h4>
+        <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
+          The poster wall drifts, follows your cursor and cycles its titles.
+          {systemReduced && preference === "system"
+            ? " Your system currently asks for reduced motion, so it's holding still."
+            : ""}
+        </p>
+      </div>
+
+      <div
+        role="radiogroup"
+        aria-label="Background motion"
+        className="flex shrink-0 rounded-full border border-white/10 bg-surface-container/60 p-1"
+      >
+        {MOTION_OPTIONS.map((option) => {
+          const on = preference === option.id;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              title={option.hint}
+              onClick={() => setMotionPreference(option.id)}
+              className={`rounded-full px-4 py-1.5 font-label-md text-label-md transition-colors ${
+                on
+                  ? "bg-primary text-on-primary"
+                  : "text-on-surface-variant hover:text-on-surface"
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

@@ -18,11 +18,12 @@ export function TrailerModal() {
   const trailerKey = useAppStore((s) => s.trailerKey);
   const loading = useAppStore((s) => s.trailerLoading);
   const close = useAppStore((s) => s.closeTrailer);
-  useModalBehavior(close);
+  const z = useModalBehavior(close);
 
   return (
     <motion.div
-      className="fixed inset-0 z-[300] flex items-center justify-center p-4"
+      style={{ zIndex: z }}
+      className="fixed inset-0 flex items-center justify-center p-4"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}

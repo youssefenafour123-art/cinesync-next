@@ -93,10 +93,48 @@ export interface SearchResults {
 
 /* ---- Critic + audience scores ---- */
 
+/** One named press critic, as summarised by the film's Wikipedia article. */
+export interface CriticReview {
+  /** "Manohla Dargis", "Peter Travers". */
+  critic: string;
+  /** The outlet they wrote for. */
+  publication: string;
+  /** Wikipedia's sentence about the review, quotations included. */
+  excerpt: string;
+  /** "4/4", "3.5/5" — only when the article states a score. */
+  stars?: string;
+}
+
+export interface CriticalReception {
+  /** Wikipedia article the summaries came from — shown as the credit. */
+  source: string;
+  sourceTitle: string;
+  reviews: CriticReview[];
+  rottenTomatoes?: string;
+  rottenTomatoesCount?: string;
+  metacritic?: string;
+  metacriticCount?: string;
+  /** Metacritic's own wording, e.g. "universal acclaim". */
+  metacriticLabel?: string;
+  /** The Rotten Tomatoes critics' consensus. */
+  consensus?: string;
+}
+
 export interface Scores {
   imdb?: { value: string; votes?: string };
   rottenTomatoes?: string;
+  /** How many critic reviews the RT score is based on. */
+  rottenTomatoesCount?: string;
   metacritic?: string;
+  metacriticCount?: string;
+  metacriticLabel?: string;
+  /** The Rotten Tomatoes critics' consensus, when one is published. */
+  consensus?: string;
+  /** Named press critics. Separate from `reviews`, which are TMDB members. */
+  critics: CriticReview[];
+  /** Wikipedia article `critics` was summarised from. */
+  criticsSource?: string;
+  criticsSourceTitle?: string;
   /** Written reviews. These are TMDB community reviewers, not press critics. */
   reviews: {
     author: string;

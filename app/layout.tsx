@@ -16,10 +16,23 @@ const outfit = Outfit({
   display: "swap",
 });
 
+const DESCRIPTION =
+  "Discover movies and anime, then sync your IMDb watchlist straight into your Stremio library.";
+
 export const metadata: Metadata = {
+  // Without this the social card in app/opengraph-image.png resolves against
+  // localhost. Set NEXT_PUBLIC_SITE_URL when deploying.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: "CineSync — IMDb to Stremio",
-  description:
-    "Discover movies and anime, then sync your IMDb watchlist straight into your Stremio library.",
+  description: DESCRIPTION,
+  applicationName: "CineSync",
+  openGraph: {
+    title: "CineSync — IMDb to Stremio",
+    description: DESCRIPTION,
+    siteName: "CineSync",
+    type: "website",
+  },
+  twitter: { card: "summary_large_image", title: "CineSync", description: DESCRIPTION },
 };
 
 export const viewport: Viewport = {

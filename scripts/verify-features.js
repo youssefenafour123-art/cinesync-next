@@ -200,25 +200,42 @@ async function run() {
   await waitFor(page, () => {
     const d = document.querySelector('[role="dialog"]');
     // Wait for the scores request to settle, not just the shell to mount.
-    return !!d && /Critic & Audience Scores|OMDB_API_KEY|Community Reviews/.test(d.innerText);
+    // Case-insensitive: these headings are styled `uppercase`, and innerText
+    // applies text-transform.
+    return !!d && /critic & audience scores|OMDB_API_KEY|what the critics said|community reviews/i.test(d.innerText);
   });
   const details = await page.evaluate(() => {
     const d = document.querySelector('[role="dialog"]');
     if (!d) return null;
     const t = d.innerText;
+    const criticCards = [...d.querySelectorAll('figure')];
     return {
       title: d.querySelector('h1')?.textContent,
-      hasScoresOrHint: /Critic & Audience Scores|OMDB_API_KEY/.test(t),
-      hasCommunityReviews: /Community Reviews/.test(t),
+      // The OMDb hint only appears when nothing supplied a score. Since scores
+      // also come from Wikipedia now, either outcome is a pass.
+      hasScoresOrHint: /critic & audience scores|OMDB_API_KEY/i.test(t),
+      hasPressCritics: /what the critics said/i.test(t),
+      // Press criticism is Wikipedia's summary, and has to say so.
+      pressCredited: /summarised from[\s\S]{0,40}wikipedia/i.test(t),
+      // Every critic card names a person and an outlet — the legacy page's
+      // invented blurbs had neither, they were free-floating quotes.
+      pressAttributed: criticCards.length > 0 &&
+        criticCards.every((f) => (f.innerText.trim().split('\n').filter(Boolean).length) >= 3),
+      hasCommunityReviews: /community reviews/i.test(t),
       labelledHonestly: /not press critics/i.test(t),
-      fakeCritics: /The Empire|New York Times/.test(t),
       clickablePeople: d.querySelectorAll('button[title^="View "]').length,
     };
   });
   ok('#6 Details modal shows attributed scores and honestly-labelled reviews',
-    details && details.hasScoresOrHint && !details.fakeCritics &&
+    details && details.hasScoresOrHint &&
+      (details.hasPressCritics ? details.pressCredited && details.pressAttributed : true) &&
       (details.hasCommunityReviews ? details.labelledHonestly : true),
-    details ? `"${details.title}" · reviews=${details.hasCommunityReviews} · honest=${details.labelledHonestly} · people=${details.clickablePeople}` : 'no modal');
+    details
+      ? `"${details.title}" · scores=${details.hasScoresOrHint} · press=${details.hasPressCritics}` +
+        `(credited=${details.pressCredited}, attributed=${details.pressAttributed})` +
+        ` · community=${details.hasCommunityReviews}(honest=${details.labelledHonestly})` +
+        ` · people=${details.clickablePeople}`
+      : 'no modal');
 
   ok('Cast and crew open their profile',
     (details?.clickablePeople ?? 0) > 0, `${details?.clickablePeople ?? 0} clickable credits`);

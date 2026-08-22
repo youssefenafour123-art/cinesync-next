@@ -21,11 +21,13 @@ interface ModalShellProps {
  * definition silently won.
  */
 export function ModalShell({ onClose, children, className = "", label }: ModalShellProps) {
-  useModalBehavior(onClose);
+  // Mount order, not DOM order, decides which modal is on top — see the hook.
+  const z = useModalBehavior(onClose);
 
   return (
     <motion.div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4 md:p-8"
+      style={{ zIndex: z }}
+      className="fixed inset-0 flex items-center justify-center p-4 md:p-8"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}

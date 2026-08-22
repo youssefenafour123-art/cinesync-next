@@ -69,7 +69,7 @@ export function AnimeTab() {
               setOpen(true);
             }}
             onFocus={() => setOpen(true)}
-            className="search-input w-full pl-11"
+            className="search-input w-full pl-11 pr-10"
           />
           {query ? (
             <button

@@ -174,7 +174,11 @@ function CuratedCard({ item }: { item: MediaItem }) {
   );
 }
 
-/** Editorial sidebar — static copy by design, same as the original. */
+/**
+ * Editorial sidebar — static copy by design, same as the original, but signed
+ * by the person who actually wrote it rather than the legacy page's invented
+ * "Alex Mercer, Lead Programmer".
+ */
 function CuratorNote() {
   return (
     <Reveal as="aside" className="lg:mt-[140px] lg:w-1/4">
@@ -190,8 +194,8 @@ function CuratorNote() {
             dinner. That gap is where the surprises live.&rdquo;
           </p>
           <div className="mt-4 border-t border-primary/20 pt-4">
-            <p className="font-label-md font-semibold text-primary">Alex Mercer</p>
-            <p className="font-body-md text-[12px] text-on-surface/60">Lead Programmer</p>
+            <p className="font-display-md text-[18px] text-primary">&mdash; elwaadudi</p>
+            <p className="font-body-md text-[12px] text-on-surface/60">Curator</p>
           </div>
         </div>
       </div>

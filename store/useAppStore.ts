@@ -70,9 +70,10 @@ export const useAppStore = create<AppState>((set) => ({
   setAddSourceOpen: (addSourceOpen) => set({ addSourceOpen }),
 
   personId: null,
-  // Opening a person from inside the details modal closes it, so the two
-  // never stack — going back to a film is a click on its credit.
-  openPerson: (personId) => set({ personId, details: null, searchOpen: false }),
+  // A profile opened from a film's credits stacks *over* that film rather than
+  // replacing it, so closing the profile puts you back on the film you came
+  // from. `useModalBehavior` hands out the z-index that makes that work.
+  openPerson: (personId) => set({ personId, searchOpen: false }),
   closePerson: () => set({ personId: null }),
 
   searchOpen: false,

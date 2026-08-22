@@ -15,7 +15,8 @@ npm run dev      # http://localhost:3000
 
 No API key setup required. `TMDB_API_KEY` in `.env.local` is optional; without it the
 app falls back to the key the original carried. Either way TMDB is only ever called from
-the server, so the key never reaches the browser.
+the server, so the key never reaches the browser. `OMDB_API_KEY` is optional too — see
+[Ratings and critics](#ratings-and-critics).
 
 ## Stack
 
@@ -74,6 +75,27 @@ returned `authKey` is kept, in `localStorage`.
 | Upcoming | TMDB discover — upcoming and last two months, with trailers |
 | My Library | your connected sources → Stremio `datastorePut` |
 | Settings | `localStorage` |
+
+### Ratings and critics
+
+The details modal shows three tiers, each from a different place and labelled as such:
+
+| | Source | Notes |
+|---|---|---|
+| Rotten Tomatoes / Metacritic / IMDb scores | OMDb, else Wikipedia | OMDb needs a free `OMDB_API_KEY`; without one the numbers come from the film's Wikipedia article, which quotes both aggregators |
+| Named press critics | Wikipedia | The "Critical response" section, parsed into critic + outlet + excerpt, credited to Wikipedia (CC BY-SA) and linked back |
+| Community reviews | TMDB | Written by TMDB members, never presented as press criticism |
+
+Neither Rotten Tomatoes nor Metacritic has a public API and both forbid scraping, so
+Wikipedia is the only free source that legitimately names critics. The article is
+resolved through Wikidata by IMDb id (property `P345`), never by title — no film can
+pick up another film's reviews. See `lib/wikipedia.ts`.
+
+### Motion
+
+The animated backdrop honours `prefers-reduced-motion`. Windows sets that flag for the
+whole machine under **Adjust for best performance**, which is why Settings → Appearance
+carries a Background Motion override (Match system / Full motion / Still).
 
 ## What was broken before
 

@@ -297,6 +297,24 @@ export async function enrichById(tmdbId: number, kind: MediaKind): Promise<Media
   }
 }
 
+/**
+ * Poster URLs only, for the background wall.
+ *
+ * Deliberately skips `enrich`, which costs one TMDB request per title: the wall
+ * shows art and nothing else, so two `discover` pages per kind buy ~40 posters
+ * for two requests instead of forty.
+ */
+export async function posterWall(endpoint: "movie" | "tv", pages = 3): Promise<string[]> {
+  const raw = await discoverRaw(
+    endpoint,
+    { sort_by: "popularity.desc", "vote_count.gte": "200" },
+    pages,
+  );
+  return raw
+    .filter((r) => r.poster_path)
+    .map((r) => `${IMG}/w342${r.poster_path}`);
+}
+
 export async function discoverEnriched(
   endpoint: "movie" | "tv",
   params: Record<string, string>,

@@ -144,6 +144,13 @@ async function run() {
       document.querySelector('[aria-label="Manage connected sources"]').click();
     });
     await sleep(1200);
+    // CSV upload sits behind a disclosure — URL import is the primary path.
+    await page.evaluate(() => {
+      [...document.querySelectorAll('button')]
+        .find((b) => /upload a CSV export/i.test(b.textContent))
+        ?.click();
+    });
+    await sleep(400);
     const input = await page.$('#csv-upload');
     const tmp = path.join(OUT, '_upload.csv');
     fs.writeFileSync(tmp, csvText);

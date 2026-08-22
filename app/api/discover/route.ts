@@ -1,4 +1,5 @@
 import { fetchTopCatalog } from "@/lib/cinemeta";
+import { posterWall } from "@/lib/tmdb";
 import type { MediaItem } from "@/lib/types";
 
 export const revalidate = 3600;
@@ -12,9 +13,14 @@ export interface DiscoverPayload {
 }
 
 export async function GET() {
-  const [movies, series] = await Promise.all([
+  const [movies, series, tmdbMovies, tmdbSeries] = await Promise.all([
     fetchTopCatalog("movie"),
     fetchTopCatalog("series"),
+    // Cinemeta's top catalog caps at 50 per kind, which barely covers the wall's
+    // own grid and leaves nothing for it to cross-fade in. TMDB tops the pool up
+    // with poster URLs only — no per-title enrichment.
+    posterWall("movie"),
+    posterWall("tv"),
   ]);
 
   // Interleave films and shows so the slider isn't six movies in a row.
@@ -30,11 +36,44 @@ export async function GET() {
       { title: "Most Watched Movies", items: movies.slice(0, 18) },
       { title: "Most Watched Series", items: series.slice(0, 18) },
     ],
-    wall: [...movies, ...series]
-      .map((m) => m.poster)
-      .filter((p): p is string => Boolean(p))
-      .slice(0, 28),
+    wall: buildWall(movies, series, tmdbMovies, tmdbSeries),
   };
 
   return Response.json(payload);
+}
+
+/**
+ * The background wall's poster pool.
+ *
+ * Interleaved so neither the grid nor the cross-fade queue is a solid block of
+ * films followed by a solid block of shows, and deduped because a title can
+ * legitimately reach both sources.
+ */
+function buildWall(
+  movies: MediaItem[],
+  series: MediaItem[],
+  tmdbMovies: string[],
+  tmdbSeries: string[],
+): string[] {
+  const lists = [
+    movies.map((m) => m.poster),
+    series.map((m) => m.poster),
+    tmdbMovies,
+    tmdbSeries,
+  ];
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const longest = Math.max(...lists.map((l) => l.length));
+
+  for (let i = 0; i < longest && out.length < 180; i++) {
+    for (const list of lists) {
+      const poster = list[i];
+      if (!poster || seen.has(poster)) continue;
+      seen.add(poster);
+      out.push(poster);
+    }
+  }
+
+  return out;
 }

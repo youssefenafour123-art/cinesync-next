@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Image from "next/image";
 import { TABS, useAppStore, type TabId } from "@/store/useAppStore";
 import { Icon } from "@/components/ui/Icon";
+import logoMark from "@/public/logo-mark.png";
+import logoWordmark from "@/public/logo-wordmark.png";
 
 /**
  * Desktop header.
@@ -55,15 +58,29 @@ export function TopNav() {
         <button
           type="button"
           onClick={() => setTab("discover")}
-          className="flex shrink-0 items-center gap-2.5"
+          className="group flex shrink-0 items-center gap-2.5"
           aria-label="CineSync home"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/30">
-            <Icon name="theaters" className="text-[22px]" fill />
-          </span>
-          <span className="hidden font-display-md text-display-md-mobile tracking-tighter text-primary sm:inline">
-            Cine Sync
-          </span>
+          {/*
+            The brand lockup ships as two transparent PNGs cut from the master
+            render — the orb on its own so it can be sized independently of the
+            wordmark, which is hidden on the narrowest screens.
+          */}
+          <Image
+            src={logoMark}
+            alt=""
+            aria-hidden="true"
+            sizes="40px"
+            preload
+            className="h-9 w-9 shrink-0 drop-shadow-[0_0_10px_rgba(79,172,254,0.45)] transition-transform duration-300 group-hover:scale-105"
+          />
+          <Image
+            src={logoWordmark}
+            alt="CineSync"
+            sizes="120px"
+            preload
+            className="hidden h-5 w-auto sm:block"
+          />
         </button>
 
         <nav className="hidden items-center gap-7 md:flex" aria-label="Primary">

@@ -15,6 +15,20 @@ const ADVANCE_MS = 8000;
 /**
  * Discover hero. Replaces the single static banner with a rotating slider of
  * the most-watched titles, cross-fading between slides.
+ *
+ * It advances on its own and keeps advancing. Two earlier details stopped it
+ * from ever doing so in practice:
+ *
+ * - hovering *anywhere* on the banner paused it. The banner is 70vh of a
+ *   viewport whose only other content is below the fold, so a resting cursor
+ *   parked it indefinitely. Only a focused control pauses it now — that's the
+ *   case the pause is actually for, someone tabbing through the dots.
+ * - `prefers-reduced-motion` skipped the interval entirely. That preference is
+ *   about movement, not about content standing still forever, so it now drops
+ *   the pan and cross-fade and swaps slides outright instead.
+ *
+ * `index` is in the interval's deps, so using the arrows or dots restarts the
+ * countdown rather than advancing again a moment later.
  */
 export function HeroSlider({ items }: { items: MediaItem[] }) {
   const [index, setIndex] = useState(0);
@@ -29,10 +43,10 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
   const go = useCallback((n: number) => setIndex(((n % count) + count) % count), [count]);
 
   useEffect(() => {
-    if (count < 2 || paused || reduced) return;
+    if (count < 2 || paused) return;
     const t = setInterval(() => setIndex((i) => (i + 1) % count), ADVANCE_MS);
     return () => clearInterval(t);
-  }, [count, paused, reduced, index]);
+  }, [count, paused, index]);
 
   if (!count) {
     return (
@@ -46,8 +60,8 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
   return (
     <section
       className="relative mx-auto flex h-[70vh] min-h-[460px] w-full max-w-container-max items-end overflow-hidden rounded-b-3xl px-margin-mobile pb-14 md:px-margin-desktop"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => setPaused(true)}
+      onBlurCapture={() => setPaused(false)}
       aria-roledescription="carousel"
       aria-label="Most watched right now"
     >
@@ -56,10 +70,10 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
         <motion.div
           key={item.key}
           className="absolute inset-0 z-0"
-          initial={{ opacity: 0, scale: 1.04 }}
+          initial={{ opacity: 0, scale: reduced ? 1 : 1.04 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.9, ease: "easeOut" }}
+          transition={{ duration: reduced ? 0 : 0.9, ease: "easeOut" }}
         >
           <PosterImage
             src={item.backdrop || item.poster}
@@ -74,13 +88,22 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
 
       {/* Slide copy */}
       <div className="relative z-20 w-full">
-        <AnimatePresence mode="wait">
+        {/*
+          popLayout, not "wait". `mode="wait"` holds the incoming slide back
+          until the outgoing one's exit animation finishes, so an occluded or
+          backgrounded window — where the frame loop stalls and exit never
+          completes — freezes the banner on whichever slide it was showing even
+          though the index keeps advancing. Same trap `page.tsx` documents for
+          the tab shell. popLayout mounts the new copy immediately and lifts the
+          old one out of flow, so nothing shifts while they cross-fade.
+        */}
+        <AnimatePresence mode="popLayout">
           <motion.div
             key={item.key}
-            initial={{ opacity: 0, y: 24 }}
+            initial={{ opacity: 0, y: reduced ? 0 : 24 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.45, ease: "easeOut" }}
+            exit={{ opacity: 0, y: reduced ? 0 : -12 }}
+            transition={{ duration: reduced ? 0 : 0.45, ease: "easeOut" }}
             className="flex max-w-3xl flex-col gap-5"
           >
             <div className="flex flex-wrap items-center gap-3">

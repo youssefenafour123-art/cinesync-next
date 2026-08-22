@@ -22,7 +22,7 @@ export function SearchModal() {
   const libraryIds = useAppStore((s) => s.libraryIds);
 
   const dismiss = () => close(false);
-  useModalBehavior(dismiss);
+  const z = useModalBehavior(dismiss);
 
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -47,7 +47,8 @@ export function SearchModal() {
 
   return (
     <motion.div
-      className="fixed inset-0 z-[250] flex items-start justify-center p-4 pt-[10vh]"
+      style={{ zIndex: z }}
+      className="fixed inset-0 flex items-start justify-center p-4 pt-[10vh]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}

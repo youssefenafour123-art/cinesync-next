@@ -1,20 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import type { Scores } from "@/lib/types";
+import type { CriticReview, Scores } from "@/lib/types";
 import { useFetch } from "@/lib/useFetch";
 import { Icon } from "./Icon";
 
 type Payload = Scores & { omdbConfigured?: boolean };
 
 /**
- * Ratings and reviews.
+ * Ratings and reviews, in three clearly-labelled tiers.
  *
- * Aggregate scores come from OMDb and are labelled with their real sources
- * (Rotten Tomatoes, Metacritic, IMDb). Written reviews come from TMDB and are
- * labelled as community reviews — deliberately never presented as press
- * criticism, which is what the legacy page did with invented "The Empire" and
- * "New York Times" blurbs.
+ * Aggregate scores carry their real sources (Rotten Tomatoes, Metacritic,
+ * IMDb). Press criticism is summarised from the film's Wikipedia article and
+ * credited to it. Written reviews come from TMDB and are labelled as community
+ * reviews — deliberately never presented as press criticism, which is what the
+ * legacy page did with invented "The Empire" and "New York Times" blurbs.
  */
 export function ScoresPanel({
   imdbId,
@@ -39,6 +39,7 @@ export function ScoresPanel({
   if (!data) return null;
 
   const hasScores = data.rottenTomatoes || data.metacritic || data.imdb;
+  const critics = data.critics ?? [];
 
   return (
     <div className="mb-10">
@@ -47,11 +48,12 @@ export function ScoresPanel({
           <h3 className="mb-3 font-label-md text-label-md uppercase tracking-widest text-primary">
             Critic &amp; Audience Scores
           </h3>
-          <div className="mb-6 flex flex-wrap gap-3">
+          <div className="mb-4 flex flex-wrap gap-3">
             {data.rottenTomatoes ? (
               <ScoreChip
                 label="Rotten Tomatoes"
                 value={data.rottenTomatoes}
+                sub={data.rottenTomatoesCount ? `${data.rottenTomatoesCount} critics` : undefined}
                 tone={parseInt(data.rottenTomatoes, 10) >= 60 ? "good" : "bad"}
               />
             ) : null}
@@ -59,6 +61,10 @@ export function ScoresPanel({
               <ScoreChip
                 label="Metacritic"
                 value={data.metacritic}
+                sub={
+                  data.metacriticLabel ??
+                  (data.metacriticCount ? `${data.metacriticCount} critics` : undefined)
+                }
                 tone={parseInt(data.metacritic, 10) >= 61 ? "good" : "bad"}
               />
             ) : null}
@@ -71,12 +77,21 @@ export function ScoresPanel({
               />
             ) : null}
           </div>
+
+          {data.consensus ? (
+            <blockquote className="mb-6 border-l-2 border-primary/50 pl-4 font-body-md text-[14px] italic leading-relaxed text-on-surface-variant">
+              &ldquo;{data.consensus}&rdquo;
+              <cite className="mt-1 block font-label-md text-[11px] not-italic uppercase tracking-wider text-on-surface-variant/60">
+                Rotten Tomatoes critics&rsquo; consensus
+              </cite>
+            </blockquote>
+          ) : null}
         </>
       ) : data.omdbConfigured === false ? (
         <p className="mb-6 rounded-DEFAULT border border-white/10 bg-surface-container/40 p-3 font-body-md text-[13px] text-on-surface-variant">
           Add <code className="text-primary">OMDB_API_KEY</code> to{" "}
-          <code className="text-primary">.env.local</code> for Rotten Tomatoes and Metacritic
-          scores.{" "}
+          <code className="text-primary">.env.local</code> for live Rotten Tomatoes and Metacritic
+          scores on every title.{" "}
           <a
             href="https://www.omdbapi.com/apikey.aspx"
             target="_blank"
@@ -87,6 +102,14 @@ export function ScoresPanel({
           </a>
           .
         </p>
+      ) : null}
+
+      {critics.length > 0 ? (
+        <PressCritics
+          critics={critics}
+          source={data.criticsSource}
+          sourceTitle={data.criticsSourceTitle}
+        />
       ) : null}
 
       {data.reviews.length > 0 ? <Reviews reviews={data.reviews} /> : null}
@@ -119,7 +142,99 @@ function ScoreChip({
       <div className="font-label-md text-[11px] uppercase tracking-wider text-on-surface-variant">
         {label}
       </div>
-      {sub ? <div className="text-[11px] text-on-surface-variant/70">{sub}</div> : null}
+      {sub ? (
+        <div className="text-[11px] capitalize text-on-surface-variant/70">{sub}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Initials for the avatar disc — "Manohla Dargis" → "MD". */
+function initials(name: string): string {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
+}
+
+function PressCritics({
+  critics,
+  source,
+  sourceTitle,
+}: {
+  critics: CriticReview[];
+  source?: string;
+  sourceTitle?: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? critics : critics.slice(0, 4);
+
+  return (
+    <div className="mb-8">
+      <h3 className="mb-1 font-label-md text-label-md uppercase tracking-widest text-primary">
+        What the Critics Said
+      </h3>
+      <p className="mb-4 font-body-md text-[12px] text-on-surface-variant/70">
+        Named press reviews, summarised from{" "}
+        {source ? (
+          <a
+            href={source}
+            target="_blank"
+            rel="noreferrer"
+            className="text-on-surface-variant underline decoration-white/25 underline-offset-2 transition-colors hover:text-primary"
+          >
+            {sourceTitle ? `Wikipedia — ${sourceTitle}` : "Wikipedia"}
+          </a>
+        ) : (
+          "Wikipedia"
+        )}{" "}
+        (CC BY-SA).
+      </p>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        {shown.map((c) => (
+          <figure
+            key={`${c.critic}-${c.publication}`}
+            className="flex flex-col rounded-lg border border-white/10 bg-gradient-to-b from-white/[0.07] to-white/[0.02] p-5 transition-colors hover:border-primary/30"
+          >
+            <div className="mb-3 flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/20 font-label-md text-[13px] font-bold text-primary">
+                {initials(c.critic)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-label-md text-label-md font-bold text-on-surface">
+                  {c.critic}
+                </div>
+                <div className="truncate text-[12px] uppercase tracking-wider text-on-surface-variant">
+                  {c.publication}
+                </div>
+              </div>
+              {c.stars ? (
+                <div className="shrink-0 rounded-full border border-primary/30 bg-primary/15 px-3 py-1 font-label-md text-[12px] font-bold text-primary">
+                  {c.stars}
+                </div>
+              ) : null}
+            </div>
+
+            <blockquote className="font-body-md text-[14px] leading-relaxed text-on-surface-variant">
+              {c.excerpt}
+            </blockquote>
+          </figure>
+        ))}
+      </div>
+
+      {critics.length > 4 ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-3 font-label-md text-label-md text-primary transition-opacity hover:opacity-80"
+        >
+          {expanded ? "Show fewer critics" : `Show all ${critics.length} critics`}
+        </button>
+      ) : null}
     </div>
   );
 }

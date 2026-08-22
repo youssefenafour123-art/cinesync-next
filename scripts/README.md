@@ -30,6 +30,10 @@ node scripts/verify-features.js
 
 Both exit non-zero on failure and write screenshots into `OUT`.
 
+`verify-core.js` only reaches its last two checks when `CSV` points at a real
+IMDb export — with no list in the store, "nothing to sync" reports a different
+reason than the one it asserts.
+
 ## What they cover
 
 **`verify-core.js`** — the rebuild's baseline:
@@ -45,8 +49,9 @@ Discover hero is a slider; "In Library" badges; global search returns people and
 titles; the person modal carries bio, filmography and upcoming; the scroll lock
 releases after stacked modals; the Movies tab offers ten moods and the chips
 swap the grid; "Under the Radar" contains nothing under a 7.2 IMDb rating or
-newer than three years; the details modal shows attributed scores and reviews
-labelled as community reviews; cast and crew open a profile.
+newer than three years; the details modal shows attributed scores, press
+critics credited to Wikipedia and reviews labelled as community reviews; cast
+and crew open a profile.
 
 ## A note on writing assertions here
 
