@@ -99,7 +99,7 @@ async function run() {
 
   // 4. Every tab reachable and renders content.
   const tabs = {};
-  for (const label of ['Movies', 'Anime', 'Upcoming', 'My Library', 'Settings', 'Discover']) {
+  for (const label of ['Movies', 'Anime', 'Arabic', 'Upcoming', 'My Library', 'Settings', 'Discover']) {
     await clickNav(page, label);
     await sleep(3500);
     tabs[label] = await page.evaluate(() => {
@@ -112,7 +112,7 @@ async function run() {
       };
     });
   }
-  ok('All six tabs render visible content',
+  ok('All seven tabs render visible content',
     Object.values(tabs).every((t) => t.len > 200 && t.opacity === '1' && !t.errored),
     Object.entries(tabs).map(([k, v]) => `${k}:${v.len}c/op${v.opacity}`).join(' '));
 

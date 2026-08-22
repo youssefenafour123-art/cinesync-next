@@ -1,9 +1,10 @@
 # CineSync
 
-Discover movies and anime, then sync your IMDb watchlist into your Stremio library.
+Discover movies, anime and Arabic cinema, then sync your IMDb watchlist into your Stremio
+library.
 
 A Next.js rebuild of the original single-file `index.html` + `server.js` app that lived in
-`../imdb to stremio`. Same six tabs, same OLED-black/emerald design — rebuilt so the
+`../imdb to stremio`. Same OLED-black/emerald design, now seven tabs — rebuilt so the
 features actually work.
 
 ## Running it
@@ -72,9 +73,34 @@ returned `authKey` is kept, in `localStorage`.
 | Discover | Cinemeta top movies + series |
 | Movies | TMDB discover — cult classics, modern masterpieces, under the radar |
 | Anime | TMDB discover, genre 16 + Japanese — top rated, airing, upcoming, hidden gems |
+| Arabic | TMDB discover, `with_original_language=ar` + origin country, filtered to Cinemeta |
 | Upcoming | TMDB discover — upcoming and last two months, with trailers |
 | My Library | your connected sources → Stremio `datastorePut` |
 | Settings | `localStorage` |
+
+### Arabic cinema
+
+Egyptian, Moroccan, Lebanese and Syrian film and television, plus eight more countries,
+browsable by country and by genre.
+
+Three things make the tab work where the obvious implementation does not:
+
+- **Language and country together.** `with_origin_country=MA` alone returns 40 films,
+  Italian comedies shot in Morocco among them. Adding `with_original_language=ar` grows
+  the pool to 521 *and* removes the Italian ones.
+- **Thresholds set for the actual catalogue.** TMDB's Arabic voter base is thin: the
+  most-voted Arabic series has ~555 votes against `curate`'s site-wide floor of 500.
+  The Arabic rails use `minVotes: 25` and a 3-vote entry bar; at the site-wide numbers
+  the tab is empty, and at a 10-vote bar Syria returns 3 films instead of 23. Thin
+  averages are handled by the Bayesian weighting rather than by exclusion — a 3-vote
+  title is pulled ~89% toward the pool mean, so it appears without being ranked as
+  acclaimed.
+- **Every title is confirmed in Stremio.** A TMDB id is not enough to add something to a
+  Stremio library: the title needs an IMDb id, and Cinemeta has to carry it, or the row
+  appears in the library and cannot be opened. Both are checked before a card is shown,
+  which is why a narrow country/genre pair can legitimately come back empty.
+
+See `lib/arabic.ts`.
 
 ### Ratings and critics
 
@@ -93,9 +119,34 @@ pick up another film's reviews. See `lib/wikipedia.ts`.
 
 ### Motion
 
-The animated backdrop honours `prefers-reduced-motion`. Windows sets that flag for the
-whole machine under **Adjust for best performance**, which is why Settings → Appearance
-carries a Background Motion override (Match system / Full motion / Still).
+Motion is **on by default**, with Settings → Appearance offering Full motion / Match
+system / Still.
+
+Following `prefers-reduced-motion` by default is the textbook choice and was the wrong
+one here. Windows sets that flag for the whole machine under Visual Effects → **Adjust
+for best performance** — a performance checkbox, not an accessibility one — and the
+result was that the poster wall, both hero sliders and the rail scrolling rendered as
+still images for anyone who had ever touched it, with no clue as to why. "Match system"
+is one click away for anyone who wants the OS to decide.
+
+The preference is stamped onto `<html>` as `data-motion` by `app/page.tsx`, because half
+these animations are CSS and CSS can only see the media query. `globals.css` gates on
+that attribute; see the block beside the reduced-motion media query.
+
+### The backdrop
+
+The poster wall behind every tab is twelve independent marquee columns on a single
+`gsap.ticker` pass: pointer parallax, an autonomous drift, a scroll-linked shift, a
+screen-blended spotlight, per-column proximity lighting, and a timer that cross-fades
+individual posters to titles the wall isn't showing.
+
+It is worth knowing how it failed, because it failed the same way twice. Both times the
+report was "the background posters don't appear at all", and both times the wall was in
+the DOM with every image loaded and animating — at 34% opacity under a scrim running
+from 55% to 97% black, which is ~15% visibility at the centre of the screen and
+effectively zero at the edges. Nothing was broken that a debugger would show. The fix
+was the opacity/scrim balance in `globals.css`, and `scripts/verify-ux.js` now asserts
+on the *product* of those numbers rather than on the element existing.
 
 ## What was broken before
 
@@ -124,6 +175,8 @@ npm run build     # types + lint
 npm run dev
 ```
 
-Then: click three different posters and confirm three different titles; upload an IMDb
-CSV export and confirm a non-zero item count; connect a Stremio account and run a sync,
-watching for `POST /api/stremio/datastorePut` returning 200.
+Three Puppeteer suites live in `scripts/` — see `scripts/README.md` for how to run them.
+
+Then, by hand: click three different posters and confirm three different titles; upload an
+IMDb CSV export and confirm a non-zero item count; connect a Stremio account and run a
+sync, watching for `POST /api/stremio/datastorePut` returning 200.

@@ -28,7 +28,12 @@ export function BottomNav() {
             }`}
           >
             <Icon name={t.icon} className="mb-0.5 text-[22px]" fill={active} />
-            <span className="text-[10px] leading-none">{t.label}</span>
+            {/* `whitespace-nowrap` as well as the short label: a future tab
+                should shrink its own text rather than silently wrap and knock
+                every other icon in the row out of line. */}
+            <span className="whitespace-nowrap text-[10px] leading-none">
+              {"short" in t ? t.short : t.label}
+            </span>
           </motion.button>
         );
       })}

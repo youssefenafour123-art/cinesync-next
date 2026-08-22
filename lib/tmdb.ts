@@ -229,6 +229,14 @@ interface CurateOptions {
   postFloor?: number;
   limit?: number;
   pages?: number;
+  /**
+   * How many candidates to enrich before the post-enrichment floor is applied.
+   * Defaults to twice `limit`, which buys slack for titles the IMDb floor
+   * discards. Enrichment is two network calls per title, so rails drawing on a
+   * pool where almost nothing gets discarded — regional catalogues, where the
+   * floor is already low — can profitably ask for less.
+   */
+  shortlist?: number;
 }
 
 /**
@@ -242,7 +250,7 @@ interface CurateOptions {
 async function curate(
   endpoint: "movie" | "tv",
   params: Record<string, string>,
-  { minVotes = 500, floor = 6.5, postFloor, limit = 12, pages = 2 }: CurateOptions = {},
+  { minVotes = 500, floor = 6.5, postFloor, limit = 12, pages = 2, shortlist: shortlistSize }: CurateOptions = {},
 ): Promise<MediaItem[]> {
   const kind: MediaKind = endpoint === "movie" ? "movie" : "series";
 
@@ -262,7 +270,7 @@ async function curate(
       score: weightedRating(r.vote_average ?? 0, r.vote_count ?? 0, mean, minVotes),
     }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, limit * 2);
+    .slice(0, shortlistSize ?? limit * 2);
 
   const enriched = await Promise.all(shortlist.map((r) => enrich(r.raw, kind)));
 

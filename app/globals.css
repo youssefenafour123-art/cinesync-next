@@ -309,8 +309,8 @@ body {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  opacity: 0.15;
-  filter: grayscale(100%);
+  opacity: 0.3;
+  filter: grayscale(45%);
 }
 
 .bg-orb {
@@ -339,7 +339,14 @@ body {
   display: flex;
   justify-content: center;
   gap: 22px;
-  opacity: 0.34;
+  /*
+     This was 0.34 under a scrim that starts at 55% black and ends at 97%, which
+     multiplied out to roughly 15% visibility at the centre of the screen and
+     effectively zero at the edges — the wall was in the DOM, fully loaded, and
+     simply could not be seen. Raising the wall and lightening the scrim ramp
+     together is what actually puts the posters on screen.
+  */
+  opacity: 0.72;
   transform-style: preserve-3d;
   will-change: transform;
 }
@@ -347,6 +354,8 @@ body {
 .bg-wall-col {
   flex: 0 0 auto;
   width: 156px;
+  /* The pointer-proximity pass writes transform and filter here every frame. */
+  will-change: transform, filter;
 }
 
 .bg-wall-track {
@@ -364,7 +373,7 @@ body {
   border-radius: 12px;
   background: #101010;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9);
-  filter: saturate(1.4) contrast(1.05);
+  filter: saturate(1.25) contrast(1.04) brightness(1.06);
 }
 
 /* Keeps the wall as texture rather than something competing with the text on
@@ -374,12 +383,33 @@ body {
 .bg-scrim {
   position: absolute;
   inset: 0;
-  background: radial-gradient(
-    ellipse at 50% 42%,
-    rgba(5, 5, 5, 0.55) 0%,
-    rgba(5, 5, 5, 0.84) 55%,
-    rgba(5, 5, 5, 0.97) 100%
-  );
+  /*
+     Two layers, because one radial can't do both jobs.
+
+     The radial keeps the wall as texture in the body of the page. But its
+     centre sits at 50% 42%, which means the *lightest* part of the scrim lands
+     across the top of the viewport — exactly where every content tab puts its
+     heading and filter chips. Discover hides that behind a 70vh hero; the
+     Arabic, Movies and Tracker tabs do not, and their headings were sitting
+     directly on poster art.
+
+     So a vertical layer darkens the top ~50% and fades out entirely below it.
+     Headers get roughly 78% coverage, the middle of the page keeps ~65% of the
+     wall showing through, and neither is achieved by dimming the wall itself.
+  */
+  background:
+    linear-gradient(
+      to bottom,
+      rgba(5, 5, 5, 0.55) 0%,
+      rgba(5, 5, 5, 0.3) 25%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 50% 42%,
+      rgba(5, 5, 5, 0.34) 0%,
+      rgba(5, 5, 5, 0.64) 55%,
+      rgba(5, 5, 5, 0.9) 100%
+    );
 }
 
 /* Screen-blended, so it lifts the posters back out of the scrim as it passes
@@ -399,8 +429,8 @@ body {
   will-change: transform;
   background: radial-gradient(
     circle closest-side,
-    rgba(120, 200, 255, 0.16) 0%,
-    rgba(94, 231, 223, 0.08) 42%,
+    rgba(140, 210, 255, 0.28) 0%,
+    rgba(94, 231, 223, 0.14) 42%,
     transparent 70%
   );
 }
@@ -408,7 +438,7 @@ body {
 /* Narrow screens put content directly over the busiest part of the wall. */
 @media (max-width: 767px) {
   .bg-wall {
-    opacity: 0.18;
+    opacity: 0.5;
     gap: 16px;
   }
 
@@ -421,20 +451,59 @@ body {
   }
 
   .bg-scrim {
-    background: rgba(5, 5, 5, 0.86);
+    background: rgba(5, 5, 5, 0.72);
   }
 }
 
+/*
+   Motion gating.
+
+   `data-motion` is stamped on <html> from the same preference the GSAP and
+   Framer effects read (lib/useReducedMotion.ts). Without it the CSS half of the
+   app would answer to `prefers-reduced-motion` alone, and someone who chose
+   "Full motion" in Settings would still get frozen hero slides — Windows sets
+   that media query machine-wide under "Adjust for best performance", which is
+   the whole reason the override exists.
+
+   So: the OS preference is honoured unless the user has explicitly asked for
+   full motion, and an explicit "Still" suppresses these effects whatever the OS
+   reports.
+*/
 @media (prefers-reduced-motion: reduce) {
-  .bg-wall,
-  .bg-wall-track,
-  .bg-orb {
+  :root:not([data-motion="full"]) .bg-wall,
+  :root:not([data-motion="full"]) .bg-wall-track,
+  :root:not([data-motion="full"]) .bg-orb {
     animation: none;
   }
 
-  .bg-spotlight {
+  :root:not([data-motion="full"]) .bg-spotlight {
     display: none;
   }
+
+  :root:not([data-motion="full"]) .hero-slide,
+  :root:not([data-motion="full"]) .hero-slide.active .hero-video-wrapper,
+  :root:not([data-motion="full"]) .hero-slide.active .hero-content > *,
+  :root:not([data-motion="full"]) .hero-dot.active::after {
+    animation: none;
+    transition-property: opacity;
+    transform: none;
+  }
+}
+
+:root[data-motion="reduced"] .bg-wall,
+:root[data-motion="reduced"] .bg-wall-track,
+:root[data-motion="reduced"] .bg-orb,
+:root[data-motion="reduced"] .hero-slide,
+:root[data-motion="reduced"] .hero-slide.active .hero-video-wrapper,
+:root[data-motion="reduced"] .hero-slide.active .hero-content > *,
+:root[data-motion="reduced"] .hero-dot.active::after {
+  animation: none;
+  transition-property: opacity;
+  transform: none;
+}
+
+:root[data-motion="reduced"] .bg-spotlight {
+  display: none;
 }
 
 /* ---- Carousels (Tracker / Anime tabs) ---- */
@@ -461,10 +530,40 @@ body {
   display: flex;
   gap: 18px;
   overflow-x: auto;
-  scroll-behavior: smooth;
+  /*
+     Deliberately `auto`, not `smooth`. The arrows tween `scrollLeft` with GSAP,
+     and CSS smooth scrolling would animate toward each individual frame of that
+     tween — two easings fighting over the same value, which lands as lag. A
+     tween is also interruptible, which is the reason the arrows use one.
+  */
+  scroll-behavior: auto;
+  /* Flicks and trackpad swipes settle on a card rather than mid-poster. */
+  scroll-snap-type: x proximity;
   padding: 8px 4px 24px;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  /* Fades whichever edge still has cards beyond it; both classes are toggled
+     from the rail's scroll position. */
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 32px,
+    #000 calc(100% - 32px),
+    transparent 100%
+  );
+  transition: mask-image 0.3s ease;
+}
+
+.carousel.at-start {
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 32px), transparent 100%);
+}
+
+.carousel.at-end {
+  mask-image: linear-gradient(to right, transparent 0, #000 32px, #000 100%);
+}
+
+.carousel.at-start.at-end {
+  mask-image: none;
 }
 
 .carousel::-webkit-scrollbar {
@@ -474,6 +573,7 @@ body {
 .carousel-item {
   flex: 0 0 190px;
   width: 190px;
+  scroll-snap-align: start;
   transition: transform 0.35s cubic-bezier(0.23, 1, 0.32, 1);
 }
 
@@ -571,6 +671,19 @@ body {
   opacity: 1;
 }
 
+/*
+   At either end of the rail, the arrow that can't do anything gets out of the
+   way. This has to sit *after* the hover rule and out-specify it: both
+   `.scroll-btn.is-spent` and `.carousel-wrapper:hover .scroll-btn` are two
+   classes' worth of specificity, so whichever comes last would otherwise win —
+   and hovering the wrapper is exactly when a spent arrow would reappear.
+   Kept in the layout (not `display: none`) so the other arrow never shifts.
+*/
+.carousel-wrapper .scroll-btn.is-spent {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .scroll-btn:hover {
   background: var(--color-primary);
   color: #002113;
@@ -597,17 +710,68 @@ body {
   background: #000;
 }
 
+/* The slide used to cross-fade and nothing else, which at 70vh reads as the
+   panel repainting rather than as a carousel moving. It now arrives from the
+   right and settles, so the change has a direction. */
 .hero-slide {
   position: absolute;
   inset: 0;
   opacity: 0;
-  transition: opacity 0.9s ease;
+  transform: scale(1.06) translateX(3%);
+  transition:
+    opacity 0.9s ease,
+    transform 1.1s cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
 }
 
 .hero-slide.active {
   opacity: 1;
+  transform: scale(1) translateX(0);
   pointer-events: auto;
+}
+
+/* A slow push on whatever is behind the copy, restarted every time `.active`
+   moves to a new slide, so the hero is never actually still. */
+.hero-slide.active .hero-video-wrapper {
+  animation: cs-hero-pan 12s ease-out both;
+}
+
+@keyframes cs-hero-pan {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.09);
+  }
+}
+
+/* Copy rises line by line instead of appearing as one block. */
+.hero-slide.active .hero-content > * {
+  animation: cs-hero-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.hero-slide.active .hero-content > *:nth-child(1) {
+  animation-delay: 0.18s;
+}
+.hero-slide.active .hero-content > *:nth-child(2) {
+  animation-delay: 0.26s;
+}
+.hero-slide.active .hero-content > *:nth-child(3) {
+  animation-delay: 0.34s;
+}
+.hero-slide.active .hero-content > *:nth-child(4) {
+  animation-delay: 0.42s;
+}
+
+@keyframes cs-hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .hero-video-wrapper {
@@ -762,6 +926,8 @@ body {
 }
 
 .hero-dot {
+  position: relative;
+  overflow: hidden;
   width: 9px;
   height: 9px;
   border-radius: 50%;
@@ -771,9 +937,31 @@ body {
 }
 
 .hero-dot.active {
-  background: var(--color-primary);
+  background: rgba(255, 255, 255, 0.25);
   width: 26px;
   border-radius: 999px;
+}
+
+/* Fills over the auto-advance interval, so the carousel shows how long the
+   slide has left rather than jumping without warning. `.active` moving to
+   another dot restarts the animation. */
+.hero-dot.active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--color-primary);
+  transform-origin: left center;
+  animation: cs-dot-fill 10s linear both;
+}
+
+@keyframes cs-dot-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 
 /* ---- Misc ---- */

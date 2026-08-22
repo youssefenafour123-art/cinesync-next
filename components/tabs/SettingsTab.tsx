@@ -338,18 +338,20 @@ function Toggle({
 export type { AppSettings };
 
 const MOTION_OPTIONS: { id: MotionPreference; label: string; hint: string }[] = [
+  { id: "full", label: "Full motion", hint: "Animate everything (default)" },
   { id: "system", label: "Match system", hint: "Follows your reduced-motion setting" },
-  { id: "full", label: "Full motion", hint: "Always animate the backdrop" },
-  { id: "reduced", label: "Still", hint: "Never animate the backdrop" },
+  { id: "reduced", label: "Still", hint: "Never animate" },
 ];
 
 /**
  * Motion override.
  *
- * The animated poster wall honours `prefers-reduced-motion`, as it should —
- * but Windows sets that flag for the whole machine under "Adjust for best
- * performance", so people who never opted out of animation get a frozen
- * backdrop and no way to say otherwise. This is that way.
+ * "Full motion" is the default rather than "Match system", because Windows sets
+ * `prefers-reduced-motion` for the whole machine under Visual Effects → "Adjust
+ * for best performance". That is a performance checkbox, not an accessibility
+ * one, and following it left the poster wall, both hero sliders and the rail
+ * scrolling frozen for people who never asked for any of that. "Match system"
+ * hands the decision back to the OS for anyone who does want it.
  */
 function MotionControl() {
   const preference = useMotionPreference();
@@ -362,10 +364,13 @@ function MotionControl() {
       <div>
         <h4 className="font-body-lg text-body-lg text-on-surface">Background Motion</h4>
         <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
-          The poster wall drifts, follows your cursor and cycles its titles.
+          The poster wall drifts, reacts to your cursor and cycles its titles; the hero
+          sliders and rails animate between slides.
           {systemReduced && preference === "system"
-            ? " Your system currently asks for reduced motion, so it's holding still."
-            : ""}
+            ? " Your system currently asks for reduced motion, so all of it is holding still."
+            : systemReduced
+              ? " Your system asks for reduced motion — pick Match system to honour it."
+              : ""}
         </p>
       </div>
 

@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import { useReducedMotion } from "@/lib/useReducedMotion";
 
 interface AmbientBackgroundProps {
-  /** Poster URLs for the parallax wall. */
+  /** Poster URLs for the parallax wall, once the Discover tab has loaded them. */
   wall: string[];
 }
 
@@ -24,32 +24,44 @@ const PER_COLUMN = 8;
 /** Columns kept on small screens. */
 const MOBILE_COLUMNS = 5;
 
+/** How far from a column the pointer still lifts it, as a share of the viewport. */
+const PROXIMITY_REACH = 0.34;
+/** Column opacity with the pointer nowhere near it. */
+const COLUMN_REST_OPACITY = 0.58;
+
 /**
  * The living backdrop: drifting aurora orbs and a wall of posters that
- * scrolls, tilts toward the pointer, and rotates its own content.
+ * scrolls, tilts toward the pointer, lights up under it, and rotates its own
+ * content.
  *
  * The legacy page had a `#bgPostersContainer` marked "Injected by JS" that
  * nothing ever filled, so the wall never appeared. The first rebuild filled it
- * but left it inert — one 150-second pan over a fixed grid, which reads as a
- * still image. This version is genuinely live:
+ * but left it inert. The second made it move — and it still read as "no
+ * background at all", because the wall sat at 34% opacity under a scrim that
+ * ran from 55% to 97% black. The posters were loaded and animating the whole
+ * time, at roughly 15% visibility in the middle of the screen and less at the
+ * edges. That balance is fixed in `globals.css`; what this file adds is the
+ * behaviour:
  *
  * - every column is an independent marquee, alternating direction and speed,
  *   duplicated once so the loop is seamless;
- * - a single `gsap.ticker` pass eases the whole wall toward the pointer and
- *   adds a slow autonomous drift, so it keeps moving with no cursor at all;
- * - a screen-blended spotlight follows the pointer, lifting the posters it
- *   passes over out of the scrim;
+ * - a single `gsap.ticker` pass eases the whole wall toward the pointer, adds a
+ *   slow autonomous drift and a scroll-linked shift, so it keeps moving with no
+ *   cursor at all;
+ * - each column brightens and lifts as the pointer approaches it, which is what
+ *   makes the wall feel like a surface rather than a texture;
+ * - a screen-blended spotlight follows the pointer;
  * - posters cross-fade to titles the wall isn't showing yet, so the backdrop
  *   changes content and not just position.
  *
- * Everything the pointer drives is written with `quickSetter` onto transforms,
- * never onto a gradient — a full-screen gradient repainted every frame is the
- * one version of this effect that actually costs something.
+ * Everything the pointer drives is written with `quickSetter` onto transforms
+ * and opacity, never onto a filter or a gradient — those repaint their whole
+ * subtree, and a full-screen repaint every frame is the one version of this
+ * effect that actually costs something.
  *
- * `prefers-reduced-motion` skips every timeline and ticker; the wall renders as
- * a plain static grid. Settings → Appearance can override that per-device,
- * because Windows sets the flag machine-wide under "Adjust for best
- * performance".
+ * The wall no longer depends on the Discover tab having been visited: if no
+ * posters arrive by prop it fetches its own. Landing on Settings used to mean
+ * an empty backdrop until you went to Discover and came back.
  */
 export function AmbientBackground({ wall }: AmbientBackgroundProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -57,16 +69,44 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
   const spotRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
 
+  // Own copy of the poster pool, for when this mounts on a tab that never
+  // calls `onWall`. The prop wins the moment it arrives — it's the same
+  // payload, and preferring it avoids swapping the whole wall out underneath a
+  // running marquee.
+  const [fetched, setFetched] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (wall.length) return;
+    let cancelled = false;
+
+    // The route is `revalidate: 3600` and Discover requests the same URL, so
+    // this is a cache hit rather than a second round trip in the common case.
+    void fetch("/api/discover")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { wall?: string[] } | null) => {
+        if (!cancelled && data?.wall?.length) setFetched(data.wall);
+      })
+      .catch(() => {
+        // A missing backdrop is not worth surfacing to the user.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [wall.length]);
+
+  const posters = wall.length ? wall : fetched;
+
   // Fixed-size grid, so the layout never depends on how many posters arrived.
   const columns = useMemo(() => {
-    if (!wall.length) return [];
+    if (!posters.length) return [];
     return Array.from({ length: COLUMNS }, (_, c) =>
-      Array.from({ length: PER_COLUMN }, (_, r) => wall[(c * PER_COLUMN + r) % wall.length]),
+      Array.from({ length: PER_COLUMN }, (_, r) => posters[(c * PER_COLUMN + r) % posters.length]),
     );
-  }, [wall]);
+  }, [posters]);
 
   // Whatever the grid didn't use is the queue the cross-fade draws from.
-  const spare = useMemo(() => wall.slice(COLUMNS * PER_COLUMN), [wall]);
+  const spare = useMemo(() => posters.slice(COLUMNS * PER_COLUMN), [posters]);
 
   /**
    * Aurora orbs, set up once and left alone for the component's whole life.
@@ -105,7 +145,20 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
   }, [reduced]);
 
   useEffect(() => {
-    if (reduced || !columns.length) return;
+    if (!columns.length) return;
+
+    // Held still, the wall is a plain grid — but it still has to be *visible*,
+    // so the columns are opened to full opacity rather than left at the resting
+    // value the pointer pass would otherwise lift them from.
+    if (reduced) {
+      const cols = rootRef.current?.querySelectorAll<HTMLElement>(".bg-wall-col");
+      cols?.forEach((col) => {
+        col.style.opacity = "1";
+      });
+      return;
+    }
+
+    gsap.ticker.wake();
 
     const ctx = gsap.context(() => {
       const wallEl = wallRef.current;
@@ -138,6 +191,32 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
       const setSpotX = gsap.quickSetter(spotEl, "x", "px");
       const setSpotY = gsap.quickSetter(spotEl, "y", "px");
 
+      // ---- Per-column pointer proximity ----------------------------------
+      // The columns are what the cursor actually interacts with. Each one gets
+      // its own setters, so the frame loop never touches the DOM by selector.
+      const colEls = gsap.utils.toArray<HTMLElement>(".bg-wall-col");
+      const cols = colEls.map((el) => ({
+        el,
+        setScale: gsap.quickSetter(el, "scale") as (v: number) => void,
+        setColZ: gsap.quickSetter(el, "z", "px") as (v: number) => void,
+        setOpacity: gsap.quickSetter(el, "opacity") as (v: number) => void,
+        // Eased per column, so a column brightens and dims rather than tracking
+        // the cursor's exact position frame for frame.
+        lift: 0,
+        centre: 0,
+      }));
+
+      // The wall's layout box spans `inset: -50% -12%` of a full-viewport
+      // stage, so a column's untransformed centre in viewport coordinates is
+      // its offset within the wall shifted left by 12% of the viewport. The 3D
+      // tilt is deliberately ignored — this is a soft falloff, not a hit test.
+      const measure = () => {
+        const originX = -0.12 * window.innerWidth;
+        for (const c of cols) c.centre = originX + c.el.offsetLeft + c.el.offsetWidth / 2;
+      };
+      measure();
+      window.addEventListener("resize", measure, { passive: true });
+
       // Targets in 0..1 viewport space; `cur` chases them, so the wall glides
       // rather than snapping to every pointermove.
       const target = { x: 0.5, y: 0.4 };
@@ -156,6 +235,15 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
       };
       window.addEventListener("pointermove", onMove, { passive: true });
 
+      // Scroll shifts the wall too, so the backdrop responds to the one input
+      // every visitor gives it, even on a touch screen. Sampled in the listener
+      // rather than read in the tick, so the frame loop never reads layout.
+      let scrollY = window.scrollY;
+      const onScroll = () => {
+        scrollY = window.scrollY;
+      };
+      window.addEventListener("scroll", onScroll, { passive: true });
+
       const tick = () => {
         cur.x += (target.x - cur.x) * 0.045;
         cur.y += (target.y - cur.y) * 0.045;
@@ -167,11 +255,27 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
         setRotY(dx * 16 + Math.sin(t * 0.07) * 7);
         setRotX(-dy * 11 + Math.cos(t * 0.053) * 4);
         setX(-dx * 70 + Math.sin(t * 0.031) * 40);
-        setY(-dy * 50);
+        // Scrolling drags the wall a fraction of the distance the page moves,
+        // which reads as depth behind the content rather than a second scroll.
+        setY(-dy * 50 - scrollY * 0.06);
         setZ(Math.sin(t * 0.041) * 120 - 60);
 
         setSpotX(cur.x * window.innerWidth);
         setSpotY(cur.y * window.innerHeight);
+
+        const pointerX = cur.x * window.innerWidth;
+        const reach = window.innerWidth * PROXIMITY_REACH;
+        for (const c of cols) {
+          // 1 directly under the cursor, 0 beyond `reach`, squared so the
+          // falloff is a pool of light rather than a linear ramp.
+          const d = Math.min(1, Math.abs(pointerX - c.centre) / reach);
+          const want = pointerSeen ? (1 - d) * (1 - d) : 0;
+          c.lift += (want - c.lift) * 0.08;
+
+          c.setScale(1 + c.lift * 0.06);
+          c.setColZ(c.lift * 90);
+          c.setOpacity(COLUMN_REST_OPACITY + c.lift * (1 - COLUMN_REST_OPACITY));
+        }
       };
       gsap.ticker.add(tick);
 
@@ -204,6 +308,8 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
 
       return () => {
         window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("resize", measure);
+        window.removeEventListener("scroll", onScroll);
         gsap.ticker.remove(tick);
       };
     }, rootRef);

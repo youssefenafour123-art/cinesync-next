@@ -3,12 +3,19 @@
 import { create } from "zustand";
 import type { MediaItem } from "@/lib/types";
 
+/**
+ * `short` is the mobile tab bar's label, and only exists where the full one no
+ * longer fits. Seven destinations divide a 390px bar into ~52px cells, which is
+ * narrower than "My Library" renders at 10px — it wrapped to two lines and
+ * pushed that one item's icon out of alignment with the other six.
+ */
 export const TABS = [
   { id: "discover", label: "Discover", icon: "explore" },
   { id: "movies", label: "Movies", icon: "movie" },
   { id: "anime", label: "Anime", icon: "auto_awesome" },
+  { id: "arabic", label: "Arabic", icon: "public" },
   { id: "tracker", label: "Upcoming", icon: "calendar_month" },
-  { id: "library", label: "My Library", icon: "subscriptions" },
+  { id: "library", label: "My Library", short: "Library", icon: "subscriptions" },
   { id: "settings", label: "Settings", icon: "settings" },
 ] as const;
 

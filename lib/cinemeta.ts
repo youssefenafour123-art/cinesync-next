@@ -73,6 +73,32 @@ export async function fetchMeta(kind: MediaKind, imdbId: string): Promise<MediaI
   }
 }
 
+/**
+ * Whether Stremio's own catalogue actually knows this title.
+ *
+ * The point of the check is the "Add to Library" button. Writing to a Stremio
+ * library is writing an IMDb id into the user's datastore, and Stremio resolves
+ * that id through Cinemeta when it renders the library. An id TMDB knows but
+ * Cinemeta does not produces a row the user cannot open or play — which is a
+ * worse outcome than simply not recommending the title. This is most likely to
+ * bite exactly where the catalogue is thinnest, which is regional cinema.
+ *
+ * Cached for a day: whether Cinemeta carries a title changes rarely, and the
+ * Arabic rails would otherwise re-ask on every revalidation.
+ */
+export async function existsInCinemeta(kind: MediaKind, imdbId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE}/meta/${kind}/${imdbId}.json`, {
+      next: { revalidate: 86400 },
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { meta?: CinemetaMeta };
+    return Boolean(data.meta?.id);
+  } catch {
+    return false;
+  }
+}
+
 /** Just the IMDb rating — used to upgrade TMDB's vote_average where possible. */
 export async function fetchImdbRating(
   kind: MediaKind,
