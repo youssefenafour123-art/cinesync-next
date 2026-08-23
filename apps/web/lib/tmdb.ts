@@ -855,6 +855,21 @@ export interface Mood {
   params: Record<string, string>;
   minVotes?: number;
   floor?: number;
+  /**
+   * The same mood against the series catalogue, or `null` where it has no
+   * honest equivalent there.
+   *
+   * It cannot just reuse `params`. TMDB keeps separate genre vocabularies for
+   * film and television: Thriller (53), Science Fiction (878) and Horror (27)
+   * simply do not exist on the TV side, where the nearest thing is the much
+   * broader Sci-Fi & Fantasy (10765). Crime (80) happens to share an id.
+   * Keywords are shared across both, so keyword-led moods carry over intact.
+   *
+   * Vote thresholds drop too. A series accumulates far fewer votes than a film
+   * with the same audience, so reusing the film floors returned three results
+   * and called it a mood.
+   */
+  tv?: { params: Record<string, string>; minVotes?: number; floor?: number } | null;
 }
 
 /** Keyword ids verified against TMDB's /search/keyword endpoint. */
@@ -864,65 +879,101 @@ export const MOODS: Mood[] = [
     label: "Psychological Thrillers",
     blurb: "Tension that works on the mind rather than the pulse.",
     params: { with_genres: "53", with_keywords: "12565", "vote_count.gte": "400" },
+    // Genre 53 is film-only; the keyword carries the whole idea on the TV side.
+    tv: { params: { with_keywords: "12565", "vote_count.gte": "150" }, minVotes: 250 },
   },
   {
     id: "novels",
     label: "Based on Novels",
     blurb: "Adaptations that earned their source material.",
     params: { with_keywords: "818", "vote_count.gte": "600" },
+    tv: { params: { with_keywords: "818", "vote_count.gte": "150" }, minVotes: 250 },
   },
   {
     id: "scifi",
     label: "Science Fiction",
     blurb: "Ideas first, spectacle second.",
     params: { with_genres: "878", "vote_count.gte": "800" },
+    // 10765 is Sci-Fi *and* Fantasy — broader than 878, and the only option.
+    tv: { params: { with_genres: "10765", "vote_count.gte": "200" }, minVotes: 350 },
   },
   {
     id: "neonoir",
     label: "Neo-Noir",
     blurb: "Moral fog, hard shadows, nobody clean.",
     params: { with_keywords: "207268", "vote_count.gte": "250" },
+    tv: { params: { with_keywords: "207268", "vote_count.gte": "60" }, minVotes: 120 },
   },
   {
     id: "mindbenders",
     label: "Time & Memory",
     blurb: "Films that fold the timeline back on itself.",
     params: { with_keywords: "4379", "vote_count.gte": "400" },
+    tv: { params: { with_keywords: "4379", "vote_count.gte": "80" }, minVotes: 150 },
   },
   {
     id: "heist",
     label: "Heists & Capers",
     blurb: "Plans, crews, and the moment it all goes wrong.",
     params: { with_keywords: "10051", "vote_count.gte": "300" },
+    tv: { params: { with_keywords: "10051", "vote_count.gte": "60" }, minVotes: 120 },
   },
   {
     id: "comingofage",
     label: "Coming of Age",
     blurb: "The year everything changed.",
     params: { with_keywords: "10683", "vote_count.gte": "300" },
+    tv: { params: { with_keywords: "10683", "vote_count.gte": "60" }, minVotes: 120 },
   },
   {
     id: "dystopia",
     label: "Dystopian Futures",
     blurb: "Tomorrow, gone wrong.",
     params: { with_keywords: "4565", "vote_count.gte": "400" },
+    tv: { params: { with_keywords: "4565", "vote_count.gte": "80" }, minVotes: 150 },
   },
   {
     id: "crime",
     label: "Crime & Underworld",
     blurb: "Organised, personal, and rarely victimless.",
     params: { with_genres: "80", "vote_count.gte": "800" },
+    // Crime is one of the few ids the two vocabularies share.
+    tv: { params: { with_genres: "80", "vote_count.gte": "200" }, minVotes: 350 },
   },
   {
     id: "horror",
     label: "Horror That Lands",
     blurb: "Well-made frights, not cheap ones.",
     params: { with_genres: "27", "vote_count.gte": "700" },
+    /*
+       Film only, deliberately. TMDB has no Horror genre for television and no
+       keyword that stands in for one without dragging in half of Mystery, so
+       the chip is hidden on the series side rather than shown over a rail of
+       things that are not horror.
+    */
+    tv: null,
   },
 ];
 
 export function findMood(id: string): Mood | undefined {
   return MOODS.find((m) => m.id === id);
+}
+
+/** The moods that mean something for this catalogue. */
+export function moodsFor(kind: MediaKind): Mood[] {
+  return kind === "movie" ? MOODS : MOODS.filter((m) => m.tv !== null);
+}
+
+/** The discover params and thresholds a mood should run with for this kind. */
+export function moodQuery(mood: Mood, kind: MediaKind) {
+  if (kind === "movie" || !mood.tv) {
+    return { params: mood.params, minVotes: mood.minVotes ?? 800, floor: mood.floor ?? 6.6 };
+  }
+  return {
+    params: mood.tv.params,
+    minVotes: mood.tv.minVotes ?? 250,
+    floor: mood.tv.floor ?? mood.floor ?? 6.6,
+  };
 }
 
 export const ANIME_FILTER = {

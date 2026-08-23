@@ -12,7 +12,14 @@ import type { MediaItem } from "@/lib/types";
  */
 export const TABS = [
   { id: "discover", label: "Discover", icon: "explore" },
-  { id: "movies", label: "Movies", icon: "movie" },
+  /*
+     Named for what it does, not for one of the two catalogues it covers. The
+     tab holds curated rails and a mood browser for films *and* series, chosen
+     by a toggle inside it, so "Movies" described half of it. The id stays
+     `movies` — it is what the route and the tab component are called, and
+     renaming it would touch the payload imports for nothing a viewer sees.
+  */
+  { id: "movies", label: "Curated", icon: "recommend" },
   { id: "anime", label: "Anime", icon: "auto_awesome" },
   { id: "arabic", label: "Arabic", icon: "public" },
   { id: "tracker", label: "Upcoming", icon: "upcoming" },

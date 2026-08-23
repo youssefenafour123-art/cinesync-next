@@ -20,21 +20,58 @@ import { ErrorState, LoadingState } from "@/components/ui/States";
  * whose cards all called `openDummyDetails()`. Rails are now real TMDB data
  * ranked by weighted rating, plus a mood browser.
  */
+type Catalogue = "movie" | "tv";
+
 export function MoviesTab() {
-  const { data, loading, error, reload } = useFetch<MoviesPayload>("/api/movies");
+  const [type, setType] = useState<Catalogue>("movie");
+  const { data, loading, error, reload } = useFetch<MoviesPayload>(`/api/movies?type=${type}`);
   const [mood, setMood] = useState("psychological");
-  const moodState = useFetch<MoodPayload>(`/api/mood?id=${mood}`);
+  const moodState = useFetch<MoodPayload>(`/api/mood?id=${mood}&type=${type}`);
+
+  const moods = moodState.data?.moods ?? [];
+  /*
+     Which chip reads as selected.
+
+     Not simply `mood`: some moods have no series equivalent — Horror is the
+     one, TMDB has no such genre for television — so switching to Series while
+     one of those is picked leaves `mood` naming something the catalogue no
+     longer offers. The route falls back to the first available mood in that
+     case, and this falls back the same way, so the highlighted chip is always
+     the rail actually being shown.
+  */
+  const activeMood = moods.some((m) => m.id === mood) ? mood : (moods[0]?.id ?? mood);
 
   return (
     <div className="mx-auto w-full max-w-container-max px-margin-mobile pb-16 pt-8 md:px-margin-desktop">
-      <div className="mb-10">
-        <h1 className="font-headline-lg text-headline-lg-mobile text-on-surface md:text-headline-lg">
-          Curated Picks
-        </h1>
-        <p className="mt-2 font-body-md text-body-md text-on-surface-variant">
-          Ranked by weighted rating, so a film with nine perfect votes can&rsquo;t outrank a
-          masterpiece with four thousand.
-        </p>
+      <div className="mb-10 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-headline-lg text-headline-lg-mobile text-on-surface md:text-headline-lg">
+            Curated Picks
+          </h1>
+          <p className="mt-2 font-body-md text-body-md text-on-surface-variant">
+            Ranked by weighted rating, so {type === "movie" ? "a film" : "a show"} with nine perfect
+            votes can&rsquo;t outrank {type === "movie" ? "a masterpiece" : "a classic"} with four
+            thousand.
+          </p>
+        </div>
+
+        <div className="flex gap-2 rounded-full border border-white/10 bg-surface-container/60 p-1">
+          {(["movie", "tv"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setType(t)}
+              aria-pressed={type === t}
+              className={`rounded-full px-5 py-2 font-label-md text-label-md transition-colors ${
+                type === t
+                  ? "bg-primary text-on-primary"
+                  : "text-on-surface-variant hover:text-on-surface"
+              }`}
+            >
+              {t === "movie" ? "Movies" : "TV Shows"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ---- Browse by mood ---- */}
@@ -44,14 +81,14 @@ export function MoviesTab() {
         </h2>
 
         <div className="mb-6 flex flex-wrap gap-2">
-          {(moodState.data?.moods ?? []).map((m) => (
+          {moods.map((m) => (
             <button
               key={m.id}
               type="button"
               onClick={() => setMood(m.id)}
-              aria-pressed={mood === m.id}
+              aria-pressed={activeMood === m.id}
               className={`rounded-full px-4 py-2 font-label-md text-label-md transition-colors ${
-                mood === m.id
+                activeMood === m.id
                   ? "bg-primary text-on-primary"
                   : "border border-white/10 bg-surface-container/50 text-on-surface-variant hover:border-primary/40 hover:text-on-surface"
               }`}
@@ -74,7 +111,7 @@ export function MoviesTab() {
       {error ? (
         <ErrorState message={error} onRetry={reload} />
       ) : loading && !data ? (
-        <LoadingState label="Loading curated picks…" />
+        <LoadingState label={type === "movie" ? "Loading curated films…" : "Loading curated series…"} />
       ) : (
         <div className="flex flex-col gap-gutter lg:flex-row">
           <div className="flex flex-col gap-16 lg:w-3/4">

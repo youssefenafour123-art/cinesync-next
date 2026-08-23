@@ -1,5 +1,6 @@
-import { MOODS, curate, findMood } from "@/lib/tmdb";
+import { curate, findMood, moodQuery, moodsFor } from "@/lib/tmdb";
 import type { MoodPayload } from "@cinesync/shared/payloads";
+import type { MediaKind } from "@/lib/types";
 
 export const revalidate = 3600;
 
@@ -12,20 +13,41 @@ export const revalidate = 3600;
 export type { MoodPayload };
 
 export async function GET(req: Request) {
-  const id = new URL(req.url).searchParams.get("id") ?? MOODS[0].id;
-  const mood = findMood(id);
+  const params = new URL(req.url).searchParams;
+  const kind: MediaKind = params.get("type") === "tv" ? "series" : "movie";
+  const endpoint = kind === "movie" ? "movie" : "tv";
 
-  const catalogue = MOODS.map((m) => ({ id: m.id, label: m.label, blurb: m.blurb }));
+  // The catalogue is per-kind: a mood with no honest series equivalent is not
+  // offered at all rather than offered and then empty. See `Mood.tv`.
+  const available = moodsFor(kind);
+  const catalogue = available.map((m) => ({ id: m.id, label: m.label, blurb: m.blurb }));
 
-  if (!mood) {
+  /*
+     Fall back to the first available mood whenever the requested one isn't on
+     offer for this kind — an unknown id, or a film-only mood asked for against
+     the series catalogue.
+
+     Both cases have to land on the *same* mood the tab highlights, and the tab
+     highlights `moods[0]` when its own selection is missing from the
+     catalogue. Returning `rail: null` here instead would leave the first chip
+     looking selected above an empty section, which is what switching to
+     Series with Horror picked used to do.
+  */
+  const requested = params.get("id");
+  const asked = requested ? findMood(requested) : undefined;
+  const offered = asked && !(kind === "series" && asked.tv === null) ? asked : available[0];
+
+  if (!offered) {
     return Response.json({ moods: catalogue, rail: null } satisfies MoodPayload);
   }
+  const mood = offered;
 
   try {
+    const query = moodQuery(mood, kind);
     const items = await curate(
-      "movie",
-      { ...mood.params, sort_by: "vote_average.desc" },
-      { minVotes: mood.minVotes ?? 800, floor: mood.floor ?? 6.6, limit: 12, pages: 2 },
+      endpoint,
+      { ...query.params, sort_by: "vote_average.desc" },
+      { minVotes: query.minVotes, floor: query.floor, limit: 12, pages: 2 },
     );
 
     return Response.json({
