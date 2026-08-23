@@ -125,14 +125,21 @@ export function isoDate(offsetMonths = 0): string {
  *
  * Types are ranked rather than taken first-found, because a country can list
  * several. Theatrical is the release; a limited run is the next best answer; a
- * digital date is the real one for a film that never sees a cinema. A festival
- * premiere is last — it is a screening, not a release, and using it would date
- * a film to a year before anyone can watch it.
+ * digital date is the real one for a film that never sees a cinema.
  *
- * Earliest wins within a type, for the same reason: a second entry of the same
- * kind is usually a re-release or a regional stagger.
+ * Festival premieres (type 1) are discarded outright rather than ranked last.
+ * Ranking was not enough: a film whose *only* American entry is a premiere
+ * still fell through to it, and those run months ahead — Dark Horse premieres
+ * in June 2026 and releases in November, Censurada premieres a full year
+ * early. On a release calendar that is not a near miss, it is the wrong month
+ * entirely, so such a film keeps its own date instead.
+ *
+ * Earliest wins within a type: a second entry of the same kind is usually a
+ * re-release or a regional stagger.
  */
-const US_RELEASE_PREFERENCE = [3, 2, 4, 6, 5, 1];
+const US_RELEASE_PREFERENCE = [3, 2, 4, 6, 5];
+/** TMDB release type 1. A screening, not a release. */
+const PREMIERE = 1;
 
 function usReleaseDate(results: TmdbDetail["release_dates"]): string | undefined {
   const us = (results?.results ?? []).find((r) => r.iso_3166_1 === "US");
@@ -140,7 +147,7 @@ function usReleaseDate(results: TmdbDetail["release_dates"]): string | undefined
 
   const dated = us.release_dates
     .map((r) => ({ date: (r.release_date ?? "").slice(0, 10), type: r.type ?? 0 }))
-    .filter((r) => r.date);
+    .filter((r) => r.date && r.type !== PREMIERE);
   if (!dated.length) return undefined;
 
   for (const type of US_RELEASE_PREFERENCE) {
@@ -149,6 +156,49 @@ function usReleaseDate(results: TmdbDetail["release_dates"]): string | undefined
   }
 
   return dated.sort((a, b) => a.date.localeCompare(b.date))[0].date;
+}
+
+/*
+   One append string for both film lookups, so they are one request.
+
+   The calendar asks for a film's US release date and, moments later, for its
+   artwork. Those were two calls to the same endpoint differing only in
+   `append_to_response`, which makes two cache keys and two round trips per
+   film — the calendar measured 7.9s cold. Requesting the same URL from both
+   means Next's data cache serves the second, and neither caller pays for
+   what the other already fetched.
+*/
+const MOVIE_APPEND = "images,release_dates";
+
+/**
+ * Announced US release dates for a batch of films, keyed by TMDB id.
+ *
+ * Exposed for `lib/calendar.ts`, which builds from `/discover/movie` and so
+ * only ever sees `primary_release_date` — the earliest release in any country.
+ * Without this the calendar sat a film on another country's opening while the
+ * details panel, which enriches properly, printed the American one.
+ *
+ * A film with no announced US release is simply absent from the map; the
+ * caller keeps whatever date it had.
+ */
+export async function usReleaseDates(ids: number[]): Promise<Map<number, string>> {
+  const found = new Map<number, string>();
+
+  await mapLimit(ids, 8, async (id) => {
+    try {
+      const detail = await tmdb<TmdbDetail>(
+        `/movie/${id}`,
+        { append_to_response: MOVIE_APPEND },
+        86400,
+      );
+      const us = usReleaseDate(detail.release_dates);
+      if (us) found.set(id, us);
+    } catch {
+      // Keep the discover date rather than dropping the film.
+    }
+  });
+
+  return found;
 }
 
 /** Whole days between two `YYYY-MM-DD` dates; NaN if either is unparseable. */
@@ -657,7 +707,11 @@ export async function withCommunityPosters<T extends PosterUpgradable>(items: T[
       poster_path?: string | null;
       original_language?: string;
       images?: { posters?: TmdbPoster[] };
-    }>(`/${endpoint}/${tmdbId}`, { append_to_response: "images" }, 86400);
+    }>(
+      `/${endpoint}/${tmdbId}`,
+      { append_to_response: endpoint === "movie" ? MOVIE_APPEND : "images" },
+      86400,
+    );
 
     const paths = rankCommunityPosters(
       detail.images?.posters,

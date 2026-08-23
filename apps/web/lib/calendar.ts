@@ -1,5 +1,5 @@
 import "server-only";
-import { TMDB_IMAGE, tmdbFetch } from "./tmdb";
+import { TMDB_IMAGE, tmdbFetch, usReleaseDates } from "./tmdb";
 import type { CalendarEntry, CalendarEpisode } from "./types";
 
 /**
@@ -100,6 +100,22 @@ export function monthBounds(month: string): { first: string; last: string } {
   const first = new Date(Date.UTC(y, m - 1, 1));
   const last = new Date(Date.UTC(y, m, 0));
   return { first: first.toISOString().slice(0, 10), last: last.toISOString().slice(0, 10) };
+}
+
+/**
+ * How far either side of the month to look for films.
+ *
+ * The largest primary-to-US gap seen in practice is nine days (Forgotten
+ * Island, 16 to 25 September), so a fortnight covers it with room to spare
+ * without dragging in a whole neighbouring month.
+ */
+const CATCH_MARGIN_DAYS = 14;
+
+/** A `YYYY-MM-DD` moved by whole days, staying in UTC. */
+function shiftDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 /** `YYYY-MM` for the current month, in the server's local reckoning. */
@@ -255,20 +271,46 @@ async function seriesEntries(
 export async function fetchCalendar(month: string): Promise<CalendarEntry[]> {
   const { first, last } = monthBounds(month);
 
-  const [moviesA, moviesB, series] = await Promise.all([
+  /*
+     Films are discovered over a wider window than the month they are kept for.
+
+     `/discover/movie` can only be windowed on `primary_release_date`, which is
+     the earliest release in any country — the calendar then re-dates each film
+     to its announced American release, and the two differ by up to nine days
+     in practice. Querying the month exactly would lose both ends of that: a
+     film opening abroad on 30 December but in America on 2 January would be
+     filtered out of December for being a January release, and January's own
+     query would never find it, because its primary date is in December. It
+     would simply cease to exist.
+
+     Three pages rather than two, because a window half again as wide holds
+     more films and the ordering is by popularity — without the extra page the
+     titles gained at the edges would push mid-month ones off the end.
+  */
+  const catchFirst = shiftDays(first, -CATCH_MARGIN_DAYS);
+  const catchLast = shiftDays(last, CATCH_MARGIN_DAYS);
+
+  const [moviesA, moviesB, moviesC, series] = await Promise.all([
     tmdbFetch<{ results?: DiscoverMovie[] }>("/discover/movie", {
-      "primary_release_date.gte": first,
-      "primary_release_date.lte": last,
+      "primary_release_date.gte": catchFirst,
+      "primary_release_date.lte": catchLast,
       sort_by: "popularity.desc",
       include_adult: "false",
       page: "1",
     }),
     tmdbFetch<{ results?: DiscoverMovie[] }>("/discover/movie", {
-      "primary_release_date.gte": first,
-      "primary_release_date.lte": last,
+      "primary_release_date.gte": catchFirst,
+      "primary_release_date.lte": catchLast,
       sort_by: "popularity.desc",
       include_adult: "false",
       page: "2",
+    }).catch(() => ({ results: [] as DiscoverMovie[] })),
+    tmdbFetch<{ results?: DiscoverMovie[] }>("/discover/movie", {
+      "primary_release_date.gte": catchFirst,
+      "primary_release_date.lte": catchLast,
+      sort_by: "popularity.desc",
+      include_adult: "false",
+      page: "3",
     }).catch(() => ({ results: [] as DiscoverMovie[] })),
     tmdbFetch<{ results?: DiscoverSeries[] }>("/discover/tv", {
       "air_date.gte": first,
@@ -280,7 +322,24 @@ export async function fetchCalendar(month: string): Promise<CalendarEntry[]> {
     }),
   ]);
 
-  const movies = movieEntries([...(moviesA.results ?? []), ...(moviesB.results ?? [])], first, last);
+  const candidates = movieEntries(
+    [...(moviesA.results ?? []), ...(moviesB.results ?? []), ...(moviesC.results ?? [])],
+    catchFirst,
+    catchLast,
+  );
+
+  // Re-date to the announced American release, then keep what actually lands
+  // in this month. Films with no US release keep the date they came with.
+  const american = await usReleaseDates(candidates.map((c) => c.tmdbId));
+  const movies = candidates
+    .map((entry) => {
+      const us = american.get(entry.tmdbId);
+      return us && us !== entry.date ? { ...entry, date: us } : entry;
+    })
+    .filter((entry) => entry.date >= first && entry.date <= last);
+
+  // Episodes are already dated by the air date TMDB gives per episode, which
+  // is the broadcast itself rather than a country's window on a film.
   const episodes = await seriesEntries(series.results ?? [], first, last);
 
   return [...movies, ...episodes].sort(
