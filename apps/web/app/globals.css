@@ -387,6 +387,60 @@ body {
   }
 }
 
+/* The same travelling light, around a modal panel rather than a poster.
+
+   Deliberately the poster's mechanism and not a second one: identical conic
+   gradient, identical mask trick, so the app has one idea of what a lit edge
+   looks like. Three things are retuned for something the size of a dialog —
+   the sweep runs 12s instead of 7s, because an arc crossing a 1100px panel at
+   the poster's rate reads as a progress indicator rather than as ambience; the
+   ring is 1.5px, since 2px on a long straight edge looks like a border someone
+   forgot to remove; and an outer bloom sits under it so the panel lifts off the
+   backdrop instead of the light stopping dead at the corner radius.
+
+   `z-index` is explicit here where the poster needs none: a modal's children
+   are positioned and would otherwise paint over the ring. It stays
+   `pointer-events: none` for the same reason as the poster — the layer covers
+   the whole panel, and without it the dialog would not respond to clicks.
+
+   No reduced-motion rule of its own. The blanket `*` reset near the bottom of
+   this file already freezes it, which is the one place that handling lives. */
+.modal-glow {
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 60px rgba(78, 222, 163, 0.09);
+}
+
+.modal-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  opacity: 0.75;
+  background: conic-gradient(
+    from var(--cs-edge-angle),
+    transparent 0deg,
+    rgba(110, 255, 200, 1) 30deg,
+    rgba(140, 210, 255, 0.9) 68deg,
+    transparent 118deg,
+    transparent 186deg,
+    rgba(78, 222, 163, 0.75) 232deg,
+    transparent 288deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: cs-edge-spin 12s linear infinite;
+}
+
 /* ---- Animated background ----
    One fixed root holds every layer, so paint order alone decides the stack:
    orbs, poster wall, scrim, pointer light. */

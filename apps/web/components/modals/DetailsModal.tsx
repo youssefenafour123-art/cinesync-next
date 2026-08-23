@@ -108,7 +108,7 @@ export function DetailsModal({ item }: { item: MediaItem }) {
     <ModalShell
       onClose={close}
       label={`Details for ${full.title}`}
-      className="glass-panel max-w-6xl rounded-xl md:flex-row"
+      className="glass-panel modal-glow max-w-6xl rounded-xl md:flex-row"
     >
       {/* Backdrop wash */}
       {full.backdrop ? (
@@ -413,19 +413,33 @@ function ActionButtons({
           title={`Remove “${item.title}” from your Stremio library`}
           className="group flex w-full items-center justify-center gap-2 rounded-full border border-primary/30 bg-surface-variant/50 py-3 font-label-md text-label-md text-primary transition-colors hover:border-error/40 hover:bg-error/10 hover:text-error focus-visible:border-error/40 focus-visible:bg-error/10 focus-visible:text-error disabled:opacity-60"
         >
-          <Icon
-            name={removing ? "progress_activity" : "check"}
-            className={removing ? "animate-spin" : "group-hover:hidden group-focus-visible:hidden"}
-          />
-          {!removing ? (
-            <Icon name="delete" className="hidden group-hover:inline group-focus-visible:inline" />
-          ) : null}
-          <span className={removing ? "" : "group-hover:hidden group-focus-visible:hidden"}>
-            {removing ? "Removing…" : "In Library"}
-          </span>
-          {!removing ? (
-            <span className="hidden group-hover:inline group-focus-visible:inline">Remove</span>
-          ) : null}
+          {/*
+             Every toggled piece is wrapped in a plain span.
+
+             `hidden` could not be put on the Icon itself: globals.css declares
+             `.material-symbols-outlined { display: inline-block }` unlayered,
+             which outranks a Tailwind utility on the same element, so the
+             delete glyph stayed visible and the resting pill showed a tick and
+             a bin at once. The wrapper carries no such class, so `hidden`
+             wins there.
+          */}
+          {removing ? (
+            <>
+              <Icon name="progress_activity" className="animate-spin text-[18px]" />
+              <span>Removing…</span>
+            </>
+          ) : (
+            <>
+              <span className="flex items-center group-hover:hidden group-focus-visible:hidden">
+                <Icon name="check" className="text-[18px]" />
+              </span>
+              <span className="hidden items-center group-hover:flex group-focus-visible:flex">
+                <Icon name="delete" className="text-[18px]" />
+              </span>
+              <span className="group-hover:hidden group-focus-visible:hidden">In Library</span>
+              <span className="hidden group-hover:inline group-focus-visible:inline">Remove</span>
+            </>
+          )}
         </button>
       ) : (
         <button

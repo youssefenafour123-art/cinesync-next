@@ -34,6 +34,25 @@ export function TrailerModal() {
     >
       <div className="absolute inset-0 bg-black/92 backdrop-blur-sm" onClick={close} />
 
+      {/*
+         Anchored to the overlay, not to the player.
+
+         Sitting inside the frame put it on top of YouTube's own top-right
+         controls — the quality and settings affordances the player draws over
+         the video — so the two competed for the same corner and a click could
+         land on either. Out here it is over the dimmed backdrop instead, well
+         clear of every control the embed owns, and it no longer moves with the
+         video's letterboxing.
+      */}
+      <button
+        type="button"
+        onClick={close}
+        aria-label="Close trailer"
+        className="absolute right-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/50 text-white/80 backdrop-blur-md transition-all duration-200 hover:border-primary/30 hover:bg-primary/15 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 md:right-6 md:top-6"
+      >
+        <Icon name="close" className="text-[20px]" />
+      </button>
+
       <motion.div
         initial={{ opacity: 0, scale: 0.94 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -41,15 +60,6 @@ export function TrailerModal() {
         transition={{ duration: 0.25, ease: "easeOut" }}
         className="relative aspect-video w-full max-w-5xl overflow-hidden rounded-xl bg-black shadow-[0_30px_80px_rgba(0,0,0,0.8)]"
       >
-        <button
-          type="button"
-          onClick={close}
-          aria-label="Close trailer"
-          className="absolute right-3 top-3 z-10 rounded-full border border-white/10 bg-black/60 p-2 text-white backdrop-blur-md transition-colors hover:bg-white/15"
-        >
-          <Icon name="close" />
-        </button>
-
         {loading || !trailerKey ? (
           <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-on-surface-variant">
             <Icon name="progress_activity" className="animate-spin text-3xl text-primary" />

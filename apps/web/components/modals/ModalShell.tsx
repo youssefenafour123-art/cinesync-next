@@ -53,13 +53,21 @@ export function ModalShell({ onClose, children, className = "", label }: ModalSh
         transition={{ duration: 0.25, ease: "easeOut" }}
         className={`relative flex max-h-[90vh] w-full flex-col overflow-hidden ${className}`}
       >
+        {/*
+           Sized as a square and centred with flex rather than padded around
+           the glyph. `.material-symbols-outlined` is `display: inline-block`,
+           so `p-2` around it measured a line box — the glyph's descender space
+           made the button taller than it was wide, and `rounded-full` on a
+           non-square box draws an oval, not a circle. Fixed 36px with the icon
+           centred is the only way this stays round at every zoom level.
+        */}
         <button
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="absolute right-5 top-5 z-20 rounded-full border border-white/10 bg-surface-variant/60 p-2 text-on-surface-variant backdrop-blur-md transition-all hover:scale-105 hover:bg-white/10 hover:text-primary"
+          className="absolute right-4 top-4 z-50 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/40 text-on-surface-variant backdrop-blur-md transition-all duration-200 hover:border-primary/30 hover:bg-primary/15 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
         >
-          <Icon name="close" />
+          <Icon name="close" className="text-[18px]" />
         </button>
         {children}
       </motion.div>
