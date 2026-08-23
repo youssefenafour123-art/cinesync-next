@@ -108,7 +108,7 @@ export function DetailsModal({ item }: { item: MediaItem }) {
     <ModalShell
       onClose={close}
       label={`Details for ${full.title}`}
-      className="glass-panel modal-glow max-w-6xl rounded-xl md:flex-row"
+      className="glass-panel panel-glow max-w-6xl rounded-xl md:flex-row"
     >
       {/* Backdrop wash */}
       {full.backdrop ? (

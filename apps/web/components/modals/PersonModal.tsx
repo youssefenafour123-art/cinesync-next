@@ -22,7 +22,7 @@ export function PersonModal({ id }: { id: number }) {
     <ModalShell
       onClose={close}
       label={data ? `Profile for ${data.name}` : "Person profile"}
-      className="glass-panel modal-glow max-w-5xl rounded-xl"
+      className="glass-panel panel-glow max-w-5xl rounded-xl"
     >
       {loading && !data ? (
         <LoadingState label="Loading profile…" />

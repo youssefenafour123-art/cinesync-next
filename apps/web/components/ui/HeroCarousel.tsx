@@ -40,7 +40,7 @@ export function HeroCarousel({ items }: { items: MediaItem[] }) {
   if (!count) return null;
 
   return (
-    <div className="hero-carousel">
+    <div className="hero-carousel panel-glow">
       {items.map((item, i) => {
         const active = i === index;
         const src =

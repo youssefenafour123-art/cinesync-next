@@ -387,7 +387,10 @@ body {
   }
 }
 
-/* The same travelling light, around a modal panel rather than a poster.
+/* The same travelling light, around a large panel rather than a poster.
+
+   Worn by both modals and both hero banners, which is why it is named for the
+   shape it draws and not for the thing wearing it.
 
    Deliberately the poster's mechanism and not a second one: identical conic
    gradient, identical mask trick, so the app has one idea of what a lit edge
@@ -398,20 +401,21 @@ body {
    forgot to remove; and an outer bloom sits under it so the panel lifts off the
    backdrop instead of the light stopping dead at the corner radius.
 
-   `z-index` is explicit here where the poster needs none: a modal's children
-   are positioned and would otherwise paint over the ring. It stays
-   `pointer-events: none` for the same reason as the poster — the layer covers
-   the whole panel, and without it the dialog would not respond to clicks.
+   `z-index` is explicit here where the poster needs none: every panel wearing
+   this stacks its own children — a modal's sections, a hero's slides and nav —
+   and they would otherwise paint over the ring. It stays `pointer-events:
+   none` for the same reason as the poster: the layer covers the whole panel,
+   and without it nothing underneath would respond to a click.
 
    No reduced-motion rule of its own. The blanket `*` reset near the bottom of
    this file already freezes it, which is the one place that handling lives. */
-.modal-glow {
+.panel-glow {
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.5),
     0 0 60px rgba(78, 222, 163, 0.09);
 }
 
-.modal-glow::after {
+.panel-glow::after {
   content: "";
   position: absolute;
   inset: 0;
