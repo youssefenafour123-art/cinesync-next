@@ -27,11 +27,26 @@ export async function GET(req: Request) {
 
   const ref = parseImdbRef(raw);
   if (!ref) {
+    /*
+       Two different mistakes, two different messages.
+
+       Every importable IMDb URL carries an id — `ls…` for a list, `ur…` for a
+       profile — and a link without one cannot be resolved to anything, so an
+       IMDb link that lacks one is not a near miss to be guessed at. It is
+       nearly always a page that isn't a list: a profile share link, a chart, or
+       an address typed from memory. Telling someone that shape is wrong is
+       useless when they cannot see which shape they have; telling them where
+       the right URL is found is not.
+    */
+    const looksLikeImdb = /imdb\.com/i.test(raw);
     return Response.json(
       {
-        error:
-          "That doesn't look like an IMDb list. Use a list URL (imdb.com/list/ls…) or a " +
-          "profile watchlist URL (imdb.com/user/ur…/watchlist).",
+        error: looksLikeImdb
+          ? "That IMDb link doesn't contain a list id. Open your watchlist on IMDb and copy " +
+            "the address bar — it looks like imdb.com/user/ur…/watchlist. A saved list looks " +
+            "like imdb.com/list/ls…."
+          : "That doesn't look like an IMDb list. Use a list URL (imdb.com/list/ls…) or a " +
+            "profile watchlist URL (imdb.com/user/ur…/watchlist).",
       },
       { status: 400 },
     );

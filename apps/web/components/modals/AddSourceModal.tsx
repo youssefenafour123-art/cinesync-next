@@ -202,6 +202,19 @@ export function AddSourceModal() {
               </button>
               <StatusLine status={imdbStatus} />
 
+              {/*
+                 Where the URL comes from, before the rule about it being
+                 public. A profile share link has no list id in it and cannot
+                 be imported, and that is the one people reach for first, so it
+                 is worth saying which address to copy rather than only which
+                 shapes are accepted.
+              */}
+              <p className="text-[12px] leading-relaxed text-on-surface-variant/70">
+                On IMDb, open <span className="text-on-surface-variant">Your Watchlist</span> and
+                copy the address bar — it ends in <code className="text-primary/80">/watchlist</code>.
+                A profile link on its own can&rsquo;t be imported.
+              </p>
+
               <p className="text-[12px] leading-relaxed text-on-surface-variant/70">
                 Watchlists must be public — on IMDb, Account Settings → Privacy → “Your watchlist”.
                 You can switch it back afterwards.
