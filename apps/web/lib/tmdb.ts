@@ -73,6 +73,12 @@ interface TmdbDetail {
     cast?: { id?: number; name?: string; character?: string; profile_path?: string | null }[];
   };
   videos?: { results?: { site?: string; type?: string; key?: string }[] };
+  /** Movies only. One entry per country that has an announced release. */
+  release_dates?: {
+    results?: { iso_3166_1?: string; release_dates?: { release_date?: string }[] }[];
+  };
+  /** "Released", "Post Production", "Planned", "Rumored", … */
+  status?: string;
   images?: { posters?: TmdbPoster[] };
   external_ids?: { imdb_id?: string | null };
 }
@@ -103,6 +109,12 @@ export function isoDate(offsetMonths = 0): string {
   const d = new Date();
   d.setMonth(d.getMonth() + offsetMonths);
   return d.toISOString().split("T")[0];
+}
+
+/** Whole days between two `YYYY-MM-DD` dates; NaN if either is unparseable. */
+function dayGap(a: string, b: string): number {
+  const ms = Date.parse(a) - Date.parse(b);
+  return Number.isNaN(ms) ? Number.NaN : Math.round(ms / 86_400_000);
 }
 
 function formatDate(raw?: string): string | undefined {
@@ -191,7 +203,13 @@ async function enrich(raw: TmdbListItem, kind: MediaKind): Promise<MediaItem> {
     const detail = await tmdb<TmdbDetail>(`/${endpoint}/${raw.id}`, {
       // No `include_image_language`: TMDB then returns every language, and
       // `rankCommunityPosters` keeps the ones this title may wear.
-      append_to_response: "credits,videos,images,external_ids",
+      //
+      // `release_dates` is a movie-only append and says whether a date has
+      // actually been announced anywhere — see `releaseConfirmed` below.
+      append_to_response:
+        endpoint === "movie"
+          ? "credits,videos,images,external_ids,release_dates"
+          : "credits,videos,images,external_ids",
     });
 
     const crew = detail.credits?.crew ?? [];
@@ -314,6 +332,47 @@ async function enrich(raw: TmdbListItem, kind: MediaKind): Promise<MediaItem> {
     item.genres = detail.genres?.map((g) => g.name);
     const mins = detail.runtime ?? detail.episode_run_time?.[0];
     if (mins) item.runtime = `${mins} min`;
+
+    /*
+       Whether the date is a fact or a guess.
+
+       TMDB gives every unreleased film a `release_date` regardless of whether
+       anyone has announced one, so the field alone cannot be printed as fact —
+       a title turned up dated 1 December 2026 with nothing behind it at all.
+       `release_dates` is the corroboration: one entry per country that has an
+       actual announced release, and Avengers: Secret Wars carries a US
+       theatrical entry for 2027 while the invented date carries none.
+
+       `status` is deliberately not used for this. "Planned" describes how far
+       along the production is, not how well known the date is, and plenty of
+       planned films have a studio date years out.
+
+       Series have no such endpoint. There the tell is the placeholder itself:
+       TMDB dates an announced-but-unscheduled show to the first of January, so
+       a 1 January first-air date that has not happened yet is a year, not a
+       day. Real 1 January premieres exist, but they are in the past by the
+       time it matters — this only ever downgrades a future date.
+    */
+    if (kind === "movie") {
+      /*
+         Corroborated against the date actually printed, not merely "this film
+         has some announced release somewhere". A week of tolerance because
+         countries open on different days — Avengers: Doomsday is the 16th in
+         Austria and the 17th in Argentina, and both confirm the same date is
+         known.
+      */
+      const announced = (detail.release_dates?.results ?? []).flatMap((r) =>
+        (r.release_dates ?? []).map((x) => (x.release_date ?? "").slice(0, 10)),
+      );
+      const primary = item.releaseIso;
+      item.releaseConfirmed =
+        Boolean(primary) &&
+        announced.some((d) => d && Math.abs(dayGap(d, primary!)) <= 7);
+    } else {
+      const iso = item.releaseIso;
+      const today = isoDate();
+      item.releaseConfirmed = Boolean(iso) && !(iso!.endsWith("-01-01") && iso! > today);
+    }
 
     const alts = rankCommunityPosters(
       detail.images?.posters,

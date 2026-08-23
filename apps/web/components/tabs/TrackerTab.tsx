@@ -143,7 +143,16 @@ function TrackerCard({ item }: { item: MediaItem }) {
       </div>
       <div className="carousel-info">
         <div className="carousel-name">{item.title}</div>
-        <div className="carousel-date">{item.releaseDate ?? "TBA"}</div>
+        {/*
+           Same rule as the details panel: a day only where one has been
+           announced, otherwise the year. A tracker that prints invented dates
+           is worse than one that admits it only knows the year.
+        */}
+        <div className="carousel-date">
+          {item.releaseIso && !item.releaseConfirmed
+            ? item.releaseIso.slice(0, 4)
+            : (item.releaseDate ?? "TBA")}
+        </div>
         {item.director || item.cast ? (
           <div className="carousel-desc mt-1.5 font-semibold text-white/85">
             {item.director ? (

@@ -96,11 +96,21 @@ export function DetailsModal({ item }: { item: MediaItem }) {
   */
   const today = new Date().toISOString().slice(0, 10);
   const unreleased = full.releaseIso ? full.releaseIso > today : !full.year;
-  const releaseLine = full.releaseIso
-    ? full.releaseDate
-    : full.year
+  /*
+     Print the day only when someone has actually announced it.
+
+     `releaseConfirmed` is set from TMDB's announced-releases record, because
+     TMDB dates every unreleased film whether or not a date exists — printing
+     that raw would state a guess as fact. Unconfirmed falls back to the year,
+     which is the part that is genuinely known.
+  */
+  const releaseLine = !full.releaseIso
+    ? full.year
       ? `Expected ${full.year}`
-      : "Not yet announced";
+      : "Not yet announced"
+    : full.releaseConfirmed
+      ? full.releaseDate
+      : `Expected ${full.releaseIso.slice(0, 4)}`;
 
   /*
      A series credits its creators once, not twice.

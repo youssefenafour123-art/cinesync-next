@@ -30,6 +30,14 @@ export interface MediaItem {
    * cannot answer whether a title is still to come.
    */
   releaseIso?: string;
+  /**
+   * Whether that date is an announced one rather than a placeholder.
+   *
+   * TMDB dates an unreleased film whether or not anyone has said when it comes
+   * out, so `releaseIso` alone cannot be printed as fact. False means the year
+   * is all that is actually known.
+   */
+  releaseConfirmed?: boolean;
   rating?: string;
   /** How many votes the rating is based on — used to weight recommendations. */
   voteCount?: number;
