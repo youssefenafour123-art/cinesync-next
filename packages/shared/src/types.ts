@@ -24,6 +24,12 @@ export interface MediaItem {
   year?: string;
   /** Formatted release date, e.g. "Mar 1, 2024". */
   releaseDate?: string;
+  /**
+   * The same date as `YYYY-MM-DD`, for comparing rather than printing.
+   * `releaseDate` is formatted for a reader and "TBA" when unknown, so it
+   * cannot answer whether a title is still to come.
+   */
+  releaseIso?: string;
   rating?: string;
   /** How many votes the rating is based on — used to weight recommendations. */
   voteCount?: number;

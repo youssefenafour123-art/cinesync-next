@@ -86,6 +86,23 @@ export function DetailsModal({ item }: { item: MediaItem }) {
   const meta = [full.year, full.genres?.slice(0, 3).join(", "), full.runtime].filter(Boolean);
 
   /*
+     Is this still to come?
+
+     Compared on `releaseIso` rather than the formatted `releaseDate`, which is
+     written for a reader and reads "TBA" when there is no date at all — a
+     string that cannot be compared to anything. A title with no date is
+     treated as upcoming too: nothing in these catalogues is undated *and*
+     already out, so the honest answer there is "announced", not silence.
+  */
+  const today = new Date().toISOString().slice(0, 10);
+  const unreleased = full.releaseIso ? full.releaseIso > today : !full.year;
+  const releaseLine = full.releaseIso
+    ? full.releaseDate
+    : full.year
+      ? `Expected ${full.year}`
+      : "Not yet announced";
+
+  /*
      A series credits its creators once, not twice.
 
      `created_by` on a show already means "the people who wrote it", so a
@@ -173,6 +190,15 @@ export function DetailsModal({ item }: { item: MediaItem }) {
                 {full.directorLabel ?? "Director"}
               </span>
               <span className="font-body-md text-body-md text-on-surface">{full.director}</span>
+            </div>
+          ) : null}
+
+          {unreleased ? (
+            <div>
+              <span className="mb-1 block font-label-md text-label-md uppercase tracking-widest text-primary">
+                {full.kind === "series" ? "First airs" : "Releases"}
+              </span>
+              <span className="font-body-md text-body-md text-on-surface">{releaseLine}</span>
             </div>
           ) : null}
 

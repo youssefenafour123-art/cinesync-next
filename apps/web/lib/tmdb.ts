@@ -123,6 +123,7 @@ function baseItem(raw: TmdbListItem, kind: MediaKind): MediaItem {
     backdrop: raw.backdrop_path ? `${IMG}/original${raw.backdrop_path}` : undefined,
     year: date ? date.slice(0, 4) : undefined,
     releaseDate: formatDate(date) ?? "TBA",
+    releaseIso: date || undefined,
     rating: raw.vote_average ? raw.vote_average.toFixed(1) : undefined,
     voteCount: raw.vote_count,
     description: raw.overview || undefined,
@@ -431,79 +432,46 @@ export function rankCommunityPosters(
       .map((p) => p.path);
 
   /*
-     Three tiers, in strict order of preference.
+     Ranked, not filtered.
 
-     The first is the bar that matters: enough votes to mean something, and an
-     average that says people liked it. That alone was too thin to rotate
-     through, and not because the bar was wrong — the data is simply sparse.
-     Attack on Titan carries 113 candidate posters, 78 of them voted on, and
-     exactly 4 average above 5.0. Most uploads are rated by nobody or rated
-     badly, so on the anime rail 60 titles of 72 had no alternative at all.
+     There were rating gates here — a vote floor and an average floor — and
+     they cost more than they bought. Poster voting is far thinner than it
+     looks: Attack on Titan carries 78 rated posters and only 4 average above
+     5.0, so the gates were rejecting most of the artwork on the strength of a
+     handful of votes it never received. Unrated is not the same as bad.
 
-     So the shortfall is filled rather than the bar lowered. The official sheet
-     comes next — it is the community's own first-ranked image, and while it is
-     too generic to *lead* with, it is a perfectly good second face for a title
-     that has only one alternative. Anything still missing is made up from
-     decently-rated posters that are merely thinly voted.
+     The weighted ranking already does the job the floors were meant to do. A
+     poster with one perfect vote is pulled hard toward the mean and lands
+     below a 7.1 backed by fifty, so the best-supported image still leads —
+     which is what matters, since index 0 is what a client sees when it wants
+     only one. The rest fill the rotation in descending order of support.
 
-     Order is preference, not just presentation: index 0 becomes `poster` for
-     consumers that ignore the list, so the best-supported image stays the one
-     a client sees when it only wants one.
+     The one thing still filtered is shape, and that is not a judgement about
+     quality: a crop, a banner or a phone wallpaper letterboxes inside a poster
+     card whatever anyone thinks of it. Full width and something close to the
+     2:3 a poster is supposed to be.
   */
-  const STRICT_VOTES = 5;
-  const STRICT_AVERAGE = 5.5;
-  const FILLER_AVERAGE = 4.5;
+  const wellFormed = all.filter(
+    (p) =>
+      (p.width ?? 0) >= 500 &&
+      (p.aspect_ratio ?? 0) >= 0.6 &&
+      (p.aspect_ratio ?? 0) <= 0.72,
+  );
 
-  const chosen: string[] = rank(
-    all.filter(
-      (p) => (p.vote_count ?? 0) >= STRICT_VOTES && (p.vote_average ?? 0) >= STRICT_AVERAGE,
-    ),
-  ).slice(0, limit);
-
-  if (chosen.length < limit && defaultPath) chosen.push(defaultPath);
-
-  if (chosen.length < limit) {
-    const filler = rank(
-      all.filter(
-        (p) =>
-          (p.vote_count ?? 0) >= 1 &&
-          (p.vote_average ?? 0) >= FILLER_AVERAGE &&
-          !chosen.includes(p.file_path),
-      ),
-    );
-    chosen.push(...filler.slice(0, limit - chosen.length));
-  }
+  // Nothing well-formed is better than nothing at all, so fall back to the
+  // unfiltered set rather than showing a title no artwork.
+  const chosen = rank(wellFormed.length ? wellFormed : all).slice(0, limit);
 
   /*
-     Last resort: good-looking uploads nobody has rated.
+     The official sheet, appended rather than dropped.
 
-     Voting is the thinnest part of this data. Attack on Titan has 78 rated
-     posters and only 8 of them average above 4.5, which is why the anime and
-     Arabic rails still barely rotated after the tiers above — those
-     catalogues are not badly rated so much as unrated.
-
-     Unrated is not the same as bad, so the shape of the file stands in for the
-     votes that don't exist: full width, and an aspect ratio close to the 2:3
-     a poster is supposed to be. That rejects the crops, banners and phone
-     wallpapers that would otherwise letterbox inside a card. Widest first,
-     since among images nobody has judged the sharpest is the safest guess.
-
-     Strictly filler. It cannot displace anything above it, so a title with
-     well-liked artwork never shows one of these.
+     Too generic to lead with — that was the whole point of preferring
+     community artwork — but it is the community's own first-ranked image, and
+     a title whose alternatives are thin deserves a second face rather than a
+     poster that never changes.
   */
-  if (chosen.length < limit) {
-    const unrated = all
-      .filter(
-        (p) =>
-          (p.vote_count ?? 0) === 0 &&
-          (p.width ?? 0) >= 500 &&
-          (p.aspect_ratio ?? 0) >= 0.6 &&
-          (p.aspect_ratio ?? 0) <= 0.72 &&
-          !chosen.includes(p.file_path),
-      )
-      .sort((a, b) => (b.width ?? 0) - (a.width ?? 0))
-      .map((p) => p.file_path);
-    chosen.push(...unrated.slice(0, limit - chosen.length));
+  if (defaultPath && chosen.length < limit && !chosen.includes(defaultPath)) {
+    chosen.push(defaultPath);
   }
 
   return chosen;

@@ -60,3 +60,32 @@ export function sizedPoster(url?: string): string | undefined {
   if (!url || typeof window === "undefined") return url;
   return window.innerWidth <= 640 ? url.replace("/w500/", "/w342/") : url;
 }
+
+/**
+ * A rotating slice of a ranked list.
+ *
+ * The curated rails were the same twelve films on every visit, because the
+ * ranking behind them is deterministic — same query, same weighting, same
+ * winners. Widening the rail to show everything would not have helped either:
+ * more titles on screen is not variety if it is the same more, every time.
+ *
+ * So the route returns a larger pool than fits and this takes a window of it,
+ * moved along per page load. Everything in the pool cleared the same quality
+ * floor, so a shifted window is not a worse rail — it is a different one.
+ *
+ * The window wraps, and the slice is left in rank order, so whatever is shown
+ * still reads best-first rather than arriving shuffled.
+ */
+export function rotateWindow<T>(items: T[], take: number, key: string): T[] {
+  if (items.length <= take) return items;
+
+  let hash = sessionSeed();
+  for (let i = 0; i < key.length; i++) {
+    hash = (Math.imul(hash, 31) + key.charCodeAt(i)) >>> 0;
+  }
+
+  const start = hash % items.length;
+  const window: T[] = [];
+  for (let i = 0; i < take; i++) window.push(items[(start + i) % items.length]);
+  return window;
+}

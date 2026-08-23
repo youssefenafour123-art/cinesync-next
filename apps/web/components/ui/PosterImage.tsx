@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { posterVariant, sizedPoster } from "@/lib/posterVariant";
+import { posterVariant, sizedPoster } from "@/lib/rotation";
 
 interface PosterImageProps {
   src?: string;

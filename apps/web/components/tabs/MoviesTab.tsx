@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import type { MoviesPayload } from "@/app/api/movies/route";
 import type { MoodPayload } from "@/app/api/mood/route";
 import type { MediaItem, Rail } from "@/lib/types";
 import { useFetch } from "@/lib/useFetch";
+import { rotateWindow } from "@/lib/rotation";
 import { useAppStore } from "@/store/useAppStore";
 import { TiltCard } from "@/components/ui/TiltCard";
 import { PosterImage } from "@/components/ui/PosterImage";
@@ -128,7 +129,17 @@ export function MoviesTab() {
   );
 }
 
+/** Titles a rail shows at once, out of the larger pool the route returns. */
+const RAIL_SIZE = 12;
+
 function RailGrid({ rail }: { rail: Rail }) {
+  // A different window of the pool each visit — see `rotateWindow`. Keyed on
+  // the rail title so the three rails move independently rather than in step.
+  const items = useMemo(
+    () => rotateWindow(rail.items, RAIL_SIZE, rail.title),
+    [rail.items, rail.title],
+  );
+
   return (
     <>
       <div className="mb-6 border-b border-white/10 pb-4">
@@ -140,7 +151,7 @@ function RailGrid({ rail }: { rail: Rail }) {
         ) : null}
       </div>
 
-      {rail.items.length === 0 ? (
+      {items.length === 0 ? (
         <p className="py-10 text-center font-body-md text-body-md text-on-surface-variant">
           Nothing matched this one.
         </p>
@@ -151,7 +162,7 @@ function RailGrid({ rail }: { rail: Rail }) {
           initial="hidden"
           animate="show"
         >
-          {rail.items.map((item) => (
+          {items.map((item) => (
             <CuratedCard key={item.key} item={item} />
           ))}
         </motion.div>

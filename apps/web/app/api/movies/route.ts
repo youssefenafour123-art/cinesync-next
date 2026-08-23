@@ -6,6 +6,21 @@ import type { MoviesPayload } from "@cinesync/shared/payloads";
 export const revalidate = 3600;
 
 /**
+ * Titles kept per rail, against the twelve a rail shows.
+ *
+ * The tab was the same twelve films every visit — the ranking is
+ * deterministic, so the same query produces the same winners forever. A pool
+ * gives it something to rotate through, and `rotateWindow` in the tab moves
+ * along it per page load.
+ *
+ * Not larger than this, and the reason is cost rather than taste: `curate`
+ * enriches its whole shortlist, two requests a title, so every extra name here
+ * is paid for at the top of the hour when the cache turns over. Twenty-four is
+ * two full rails' worth of rotation for a shortlist that stays affordable.
+ */
+const POOL = 24;
+
+/**
  * Cut-off for "the ratings have settled". Three years is roughly how long a
  * title's average takes to stop drifting once the opening-week enthusiasts
  * stop being the whole sample.
@@ -54,7 +69,7 @@ async function movieRails(): Promise<Rail[]> {
         "vote_count.gte": "1500",
         sort_by: "vote_average.desc",
       },
-      { minVotes: 2000, floor: 7.4, limit: 12, pages: 2 },
+      { minVotes: 2000, floor: 7.4, limit: POOL, pages: 4, shortlist: 32 },
     ),
 
     // Modern masterpieces: this century, broadly acclaimed.
@@ -65,7 +80,7 @@ async function movieRails(): Promise<Rail[]> {
         "vote_count.gte": "3000",
         sort_by: "vote_average.desc",
       },
-      { minVotes: 4000, floor: 7.5, limit: 12, pages: 2 },
+      { minVotes: 4000, floor: 7.5, limit: POOL, pages: 4, shortlist: 32 },
     ),
 
     // Under the radar: genuinely well regarded, but never went mainstream.
@@ -88,7 +103,7 @@ async function movieRails(): Promise<Rail[]> {
         // Documentaries, concert films and TV movies distort this rail.
         without_genres: "99,10402,10770",
       },
-      { minVotes: 900, floor: 7, postFloor: 7.2, limit: 12, pages: 4 },
+      { minVotes: 900, floor: 7, postFloor: 7.2, limit: POOL, pages: 6, shortlist: 40 },
     ),
   ]);
 
@@ -136,7 +151,7 @@ async function seriesRails(): Promise<Rail[]> {
         sort_by: "vote_average.desc",
         without_genres: NON_DRAMA,
       },
-      { minVotes: 500, floor: 7.4, limit: 12, pages: 2 },
+      { minVotes: 500, floor: 7.4, limit: POOL, pages: 4, shortlist: 32 },
     ),
 
     curate(
@@ -147,7 +162,7 @@ async function seriesRails(): Promise<Rail[]> {
         sort_by: "vote_average.desc",
         without_genres: NON_DRAMA,
       },
-      { minVotes: 1200, floor: 7.5, limit: 12, pages: 2 },
+      { minVotes: 1200, floor: 7.5, limit: POOL, pages: 4, shortlist: 32 },
     ),
 
     curate(
@@ -160,7 +175,7 @@ async function seriesRails(): Promise<Rail[]> {
         sort_by: "vote_average.desc",
         without_genres: NON_DRAMA,
       },
-      { minVotes: 200, floor: 7, postFloor: 7.2, limit: 12, pages: 4 },
+      { minVotes: 200, floor: 7, postFloor: 7.2, limit: POOL, pages: 6, shortlist: 40 },
     ),
   ]);
 
