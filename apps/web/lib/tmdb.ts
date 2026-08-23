@@ -75,7 +75,10 @@ interface TmdbDetail {
   videos?: { results?: { site?: string; type?: string; key?: string }[] };
   /** Movies only. One entry per country that has an announced release. */
   release_dates?: {
-    results?: { iso_3166_1?: string; release_dates?: { release_date?: string }[] }[];
+    results?: {
+      iso_3166_1?: string;
+      release_dates?: { release_date?: string; type?: number }[];
+    }[];
   };
   /** "Released", "Post Production", "Planned", "Rumored", … */
   status?: string;
@@ -109,6 +112,43 @@ export function isoDate(offsetMonths = 0): string {
   const d = new Date();
   d.setMonth(d.getMonth() + offsetMonths);
   return d.toISOString().split("T")[0];
+}
+
+/**
+ * The US release date for a film, which is the one people mean.
+ *
+ * TMDB's top-level `release_date` is the *earliest* release anywhere, and for
+ * a wide international opening that is rarely the American one. Avengers:
+ * Doomsday carries 2026-12-16 there — Austria and France — while the US and UK
+ * open on the 18th. Printing the 16th was not a rounding error; it was another
+ * country's date.
+ *
+ * Types are ranked rather than taken first-found, because a country can list
+ * several. Theatrical is the release; a limited run is the next best answer; a
+ * digital date is the real one for a film that never sees a cinema. A festival
+ * premiere is last — it is a screening, not a release, and using it would date
+ * a film to a year before anyone can watch it.
+ *
+ * Earliest wins within a type, for the same reason: a second entry of the same
+ * kind is usually a re-release or a regional stagger.
+ */
+const US_RELEASE_PREFERENCE = [3, 2, 4, 6, 5, 1];
+
+function usReleaseDate(results: TmdbDetail["release_dates"]): string | undefined {
+  const us = (results?.results ?? []).find((r) => r.iso_3166_1 === "US");
+  if (!us?.release_dates?.length) return undefined;
+
+  const dated = us.release_dates
+    .map((r) => ({ date: (r.release_date ?? "").slice(0, 10), type: r.type ?? 0 }))
+    .filter((r) => r.date);
+  if (!dated.length) return undefined;
+
+  for (const type of US_RELEASE_PREFERENCE) {
+    const matches = dated.filter((r) => r.type === type).sort((a, b) => a.date.localeCompare(b.date));
+    if (matches.length) return matches[0].date;
+  }
+
+  return dated.sort((a, b) => a.date.localeCompare(b.date))[0].date;
 }
 
 /** Whole days between two `YYYY-MM-DD` dates; NaN if either is unparseable. */
@@ -354,20 +394,30 @@ async function enrich(raw: TmdbListItem, kind: MediaKind): Promise<MediaItem> {
        time it matters — this only ever downgrades a future date.
     */
     if (kind === "movie") {
-      /*
-         Corroborated against the date actually printed, not merely "this film
-         has some announced release somewhere". A week of tolerance because
-         countries open on different days — Avengers: Doomsday is the 16th in
-         Austria and the 17th in Argentina, and both confirm the same date is
-         known.
-      */
-      const announced = (detail.release_dates?.results ?? []).flatMap((r) =>
-        (r.release_dates ?? []).map((x) => (x.release_date ?? "").slice(0, 10)),
-      );
-      const primary = item.releaseIso;
-      item.releaseConfirmed =
-        Boolean(primary) &&
-        announced.some((d) => d && Math.abs(dayGap(d, primary!)) <= 7);
+      const us = usReleaseDate(detail.release_dates);
+
+      if (us) {
+        // An announced American release: the date, and the source, we want.
+        item.releaseIso = us;
+        item.releaseDate = formatDate(us) ?? item.releaseDate;
+        item.year = us.slice(0, 4);
+        item.releaseConfirmed = true;
+      } else {
+        /*
+           No US release announced — a foreign film, usually. Falling back to
+           the primary rather than refusing to date it at all: an Arabic or
+           French title that never opens in America still has a real release,
+           and blanking it would punish exactly the catalogues this app exists
+           to cover. It has to be corroborated to be printed as a day, with a
+           week of tolerance because countries open on different days.
+        */
+        const announced = (detail.release_dates?.results ?? []).flatMap((r) =>
+          (r.release_dates ?? []).map((x) => (x.release_date ?? "").slice(0, 10)),
+        );
+        const primary = item.releaseIso;
+        item.releaseConfirmed =
+          Boolean(primary) && announced.some((d) => d && Math.abs(dayGap(d, primary!)) <= 7);
+      }
     } else {
       const iso = item.releaseIso;
       const today = isoDate();
