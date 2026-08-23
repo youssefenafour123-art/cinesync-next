@@ -97,7 +97,7 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
 
   return (
     <section
-      className="panel-glow relative mx-auto flex h-[70vh] min-h-[460px] w-full max-w-container-max items-end overflow-hidden rounded-b-3xl px-margin-mobile pb-14 md:px-margin-desktop"
+      className="panel-glow relative mx-auto flex h-[70vh] min-h-[460px] w-full max-w-container-max items-end overflow-hidden rounded-3xl px-margin-mobile pb-14 md:px-margin-desktop"
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
       aria-roledescription="carousel"
