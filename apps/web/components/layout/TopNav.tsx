@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import Image from "next/image";
 import { TABS, useAppStore, type TabId } from "@/store/useAppStore";
+import { useTabHoverPrefetch } from "@/lib/useTabPrefetch";
 import { Icon } from "@/components/ui/Icon";
 import logoMark from "@/public/logo-mark.png";
 import logoWordmark from "@/public/logo-wordmark.png";
@@ -18,6 +19,7 @@ import logoWordmark from "@/public/logo-wordmark.png";
 export function TopNav() {
   const tab = useAppStore((s) => s.tab);
   const setTab = useAppStore((s) => s.setTab);
+  const warm = useTabHoverPrefetch();
   const setAddSourceOpen = useAppStore((s) => s.setAddSourceOpen);
   const setSearchOpen = useAppStore((s) => s.setSearchOpen);
   const navRef = useRef<HTMLElement>(null);
@@ -101,7 +103,14 @@ export function TopNav() {
 
         <nav className="hidden items-center gap-7 md:flex" aria-label="Primary">
           {TABS.map((t) => (
-            <NavLink key={t.id} id={t.id} label={t.label} active={tab === t.id} onSelect={setTab} />
+            <NavLink
+              key={t.id}
+              id={t.id}
+              label={t.label}
+              active={tab === t.id}
+              onSelect={setTab}
+              onIntent={warm}
+            />
           ))}
         </nav>
 
@@ -144,16 +153,22 @@ function NavLink({
   label,
   active,
   onSelect,
+  onIntent,
 }: {
   id: TabId;
   label: string;
   active: boolean;
   onSelect: (id: TabId) => void;
+  onIntent: (id: TabId) => void;
 }) {
   return (
     <button
       type="button"
       onClick={() => onSelect(id)}
+      // Pointer or keyboard, since a tab reached by tabbing to it deserves the
+      // same head start as one reached by mouse.
+      onPointerEnter={() => onIntent(id)}
+      onFocus={() => onIntent(id)}
       aria-current={active ? "page" : undefined}
       className={
         active

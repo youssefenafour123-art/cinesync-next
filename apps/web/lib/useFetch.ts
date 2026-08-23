@@ -32,8 +32,88 @@ interface Settled<T> {
  */
 const cache = new Map<string, unknown>();
 
+/** Requests in flight, keyed by URL, so the same URL is only ever asked once. */
+const inflight = new Map<string, Promise<unknown>>();
+
 /**
- * Minimal JSON fetch hook with abort-on-unmount and a session-lived cache.
+ * One request per URL, shared by everyone who wants it.
+ *
+ * Deduplication is not a micro-optimisation here. Landing on Discover fired
+ * `/api/discover` three times: the tab asked for it, the ambient background
+ * asked for it independently for its poster wall, and the browser's own cache
+ * only absorbed one of the two — 40KB downloaded and parsed twice before
+ * anything else could start. The idle sweep and the hover handler would have
+ * added more of the same.
+ *
+ * Sharing the promise means a second caller for a URL already in flight waits
+ * on the first instead of starting its own, whether it is a component
+ * rendering, a prefetch guessing, or a pointer hovering a nav item.
+ *
+ * `cache` is written here rather than by the caller, so every path that can
+ * fetch a URL also populates it. Errors deliberately do not write, which is
+ * what lets a failed revalidation leave good data in place.
+ */
+function load<T>(url: string): Promise<T> {
+  const existing = inflight.get(url);
+  if (existing) return existing as Promise<T>;
+
+  const run = fetch(url)
+    .then(async (res) => {
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error((json as { error?: string })?.error || `Request failed (${res.status})`);
+      }
+      cache.set(url, json);
+      return json as T;
+    })
+    .finally(() => {
+      inflight.delete(url);
+    });
+
+  inflight.set(url, run);
+  return run;
+}
+
+/**
+ * The shared loader, for the one place that needs a payload without rendering
+ * it — `AmbientBackground` pulls the poster wall out of the Discover payload
+ * whichever tab it happens to mount on.
+ */
+export function fetchShared<T>(url: string): Promise<T> {
+  // Cache-first, unlike `useFetch`. This serves a caller that wants the
+  // payload once and has no way to show a newer one — the wall is a running
+  // marquee, and swapping its posters mid-scroll to say the same thing is
+  // worse than being an hour stale. `useFetch` still revalidates on mount,
+  // because a tab re-render can absorb fresh data without anyone noticing.
+  if (cache.has(url)) return Promise.resolve(cache.get(url) as T);
+  return load<T>(url);
+}
+
+/**
+ * Warms the cache for a URL a tab is *about* to want.
+ *
+ * Switching tabs was only ever instant the second time: the cache above is
+ * filled by rendering, so the first visit to each tab paid its route handler's
+ * full cost with skeletons on screen. Most of those handlers read a query
+ * parameter, which makes them dynamic — the tracker and the calendar were
+ * measured at ~2.5s cold against a local production build, and the network
+ * sits on top of that.
+ *
+ * So the fetch is moved off the critical path instead of being made faster:
+ * by the time a tab is clicked its payload is usually already here, and
+ * `useFetch` renders from cache on the first frame.
+ *
+ * Failures are swallowed on purpose. A prefetch is a guess about what someone
+ * will do next; if it is wrong, or offline, the tab's own fetch reports the
+ * error when it actually matters.
+ */
+export function prefetch(url: string): void {
+  if (typeof window === "undefined" || cache.has(url)) return;
+  void load(url).catch(() => {});
+}
+
+/**
+ * Minimal JSON fetch hook over the shared loader, with a session-lived cache.
  *
  * State is stored against the request key and everything else is derived, so
  * switching URLs shows a loading state without an extra synchronous setState
@@ -59,22 +139,23 @@ export function useFetch<T>(url: string | null): FetchState<T> {
   useEffect(() => {
     if (!key || !url) return;
 
-    const controller = new AbortController();
+    /*
+       A flag rather than an AbortController.
 
-    fetch(url, { signal: controller.signal })
-      .then(async (res) => {
-        const json = await res.json().catch(() => null);
-        if (!res.ok) {
-          throw new Error((json as { error?: string })?.error || `Request failed (${res.status})`);
-        }
-        return json as T;
-      })
+       The request belongs to `load` now and may be shared with another
+       component or a prefetch, so aborting on unmount would cancel work
+       somebody else is waiting on. Letting it finish also fills the cache,
+       which is the whole point — switching away from a tab mid-load and back
+       should find the payload waiting, not start again.
+    */
+    let active = true;
+
+    load<T>(url)
       .then((data) => {
-        cache.set(url, data);
-        setSettled({ key, data, error: null });
+        if (active) setSettled({ key, data, error: null });
       })
       .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (!active) return;
         // A failed revalidation must not blank out good cached data — the tab
         // keeps showing what it had and simply doesn't update.
         if (cache.has(url)) return;
@@ -85,7 +166,9 @@ export function useFetch<T>(url: string | null): FetchState<T> {
         });
       });
 
-    return () => controller.abort();
+    return () => {
+      active = false;
+    };
   }, [key, url]);
 
   const current = settled?.key === key ? settled : null;

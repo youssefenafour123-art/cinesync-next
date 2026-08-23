@@ -1,3 +1,4 @@
+import { CATALOGUE_CACHE } from "@/lib/httpCache";
 import { discoverEnriched, isoDate } from "@/lib/tmdb";
 import type { TrackerPayload } from "@cinesync/shared/payloads";
 
@@ -36,7 +37,7 @@ export async function GET(req: Request) {
     const hero = (withTrailer.length ? withTrailer : all).slice(0, 5);
 
     const payload: TrackerPayload = { hero, upcoming, released };
-    return Response.json(payload);
+    return Response.json(payload, { headers: CATALOGUE_CACHE });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load tracker data";
     return Response.json({ error: message }, { status: 502 });

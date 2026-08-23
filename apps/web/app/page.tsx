@@ -6,6 +6,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { useMotionPreference } from "@/lib/useReducedMotion";
 import { useSourcesStore } from "@/store/useSourcesStore";
 import { useLibrarySync } from "@/lib/useLibrarySync";
+import { useTabPrefetch } from "@/lib/useTabPrefetch";
 
 import { TopNav } from "@/components/layout/TopNav";
 import { BottomNav } from "@/components/layout/BottomNav";
@@ -44,6 +45,10 @@ export default function Home() {
   // Keeps the "In Library" badges honest, including after a title is deleted
   // from the Stremio app while this tab sits in the background.
   useLibrarySync();
+
+  // Warms the other tabs' payloads once the page goes idle, so switching to
+  // one renders populated instead of paying its route handler's cold cost.
+  useTabPrefetch(tab);
 
   const [wall, setWall] = useState<string[]>([]);
   const onWall = useCallback((posters: string[]) => setWall(posters), []);

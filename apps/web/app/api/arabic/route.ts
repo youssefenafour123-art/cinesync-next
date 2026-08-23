@@ -1,3 +1,4 @@
+import { CATALOGUE_CACHE } from "@/lib/httpCache";
 import { ARABIC_COUNTRIES, ARABIC_GENRES, arabicRails } from "@/lib/arabic";
 import type { ArabicPayload } from "@cinesync/shared/payloads";
 
@@ -24,7 +25,7 @@ export async function GET(req: Request) {
       country,
       genre,
       rails,
-    } satisfies ArabicPayload);
+    } satisfies ArabicPayload, { headers: CATALOGUE_CACHE });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load Arabic titles";
     return Response.json({ error: message }, { status: 502 });

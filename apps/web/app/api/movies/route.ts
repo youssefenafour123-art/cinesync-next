@@ -1,3 +1,4 @@
+import { CATALOGUE_CACHE } from "@/lib/httpCache";
 import { curate } from "@/lib/tmdb";
 import type { Rail } from "@/lib/types";
 import type { MoviesPayload } from "@cinesync/shared/payloads";
@@ -36,7 +37,7 @@ export async function GET(req: Request) {
 
   try {
     const rails = type === "movie" ? await movieRails() : await seriesRails();
-    return Response.json({ rails } satisfies MoviesPayload);
+    return Response.json({ rails } satisfies MoviesPayload, { headers: CATALOGUE_CACHE });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load picks";
     return Response.json({ error: message }, { status: 502 });

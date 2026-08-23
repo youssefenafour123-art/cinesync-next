@@ -1,3 +1,4 @@
+import { CATALOGUE_CACHE } from "@/lib/httpCache";
 import { curate, findMood, moodQuery, moodsFor } from "@/lib/tmdb";
 import type { MoodPayload } from "@cinesync/shared/payloads";
 import type { MediaKind } from "@/lib/types";
@@ -38,7 +39,7 @@ export async function GET(req: Request) {
   const offered = asked && !(kind === "series" && asked.tv === null) ? asked : available[0];
 
   if (!offered) {
-    return Response.json({ moods: catalogue, rail: null } satisfies MoodPayload);
+    return Response.json({ moods: catalogue, rail: null } satisfies MoodPayload, { headers: CATALOGUE_CACHE });
   }
   const mood = offered;
 
@@ -53,7 +54,7 @@ export async function GET(req: Request) {
     return Response.json({
       moods: catalogue,
       rail: { title: mood.label, blurb: mood.blurb, items },
-    } satisfies MoodPayload);
+    } satisfies MoodPayload, { headers: CATALOGUE_CACHE });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load that mood";
     return Response.json({ error: message }, { status: 502 });

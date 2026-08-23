@@ -2,12 +2,14 @@
 
 import { motion } from "framer-motion";
 import { TABS, useAppStore } from "@/store/useAppStore";
+import { useTabHoverPrefetch } from "@/lib/useTabPrefetch";
 import { Icon } from "@/components/ui/Icon";
 
 /** Mobile tab bar. Same five destinations as the legacy bottom nav, plus Settings. */
 export function BottomNav() {
   const tab = useAppStore((s) => s.tab);
   const setTab = useAppStore((s) => s.setTab);
+  const warm = useTabHoverPrefetch();
 
   return (
     <nav
@@ -22,6 +24,9 @@ export function BottomNav() {
             type="button"
             whileTap={{ scale: 0.92 }}
             onClick={() => setTab(t.id)}
+            // Touch has no hover, but a finger lands on the target before it
+            // lifts — enough of a head start to be worth taking.
+            onPointerDown={() => warm(t.id)}
             aria-current={active ? "page" : undefined}
             className={`flex flex-1 flex-col items-center justify-center rounded-xl p-1.5 transition-colors ${
               active ? "bg-primary/10 text-primary" : "text-on-surface-variant"

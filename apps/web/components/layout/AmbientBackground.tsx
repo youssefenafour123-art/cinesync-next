@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import { useReducedMotion } from "@/lib/useReducedMotion";
+import { fetchShared } from "@/lib/useFetch";
 
 interface AmbientBackgroundProps {
   /** Poster URLs for the parallax wall, once the Discover tab has loaded them. */
@@ -79,11 +80,17 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
     if (wall.length) return;
     let cancelled = false;
 
-    // The route is `revalidate: 3600` and Discover requests the same URL, so
-    // this is a cache hit rather than a second round trip in the common case.
-    void fetch("/api/discover")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { wall?: string[] } | null) => {
+    /*
+       Through the shared loader, not a bare `fetch`.
+
+       This used to assume the browser cache would absorb it because Discover
+       requests the same URL. It did not: landing on Discover was measured
+       downloading `/api/discover` twice over, 40KB each, racing the tab's own
+       request. `fetchShared` collapses both into one and hands this the very
+       payload the tab is already rendering.
+    */
+    void fetchShared<{ wall?: string[] }>("/api/discover")
+      .then((data) => {
         if (!cancelled && data?.wall?.length) setFetched(data.wall);
       })
       .catch(() => {

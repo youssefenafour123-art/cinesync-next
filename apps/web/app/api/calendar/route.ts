@@ -1,3 +1,4 @@
+import { CATALOGUE_CACHE } from "@/lib/httpCache";
 import { currentMonth, fetchCalendar, isValidMonth } from "@/lib/calendar";
 import type { CalendarPayload } from "@cinesync/shared/payloads";
 
@@ -17,7 +18,9 @@ export async function GET(req: Request) {
 
   try {
     const entries = await fetchCalendar(month);
-    return Response.json({ month, entries } satisfies CalendarPayload);
+    return Response.json({ month, entries } satisfies CalendarPayload, {
+      headers: CATALOGUE_CACHE,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load the calendar";
     return Response.json({ error: message }, { status: 502 });
