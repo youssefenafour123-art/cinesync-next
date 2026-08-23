@@ -49,6 +49,8 @@ interface TmdbPoster {
   file_path: string;
   vote_average: number;
   vote_count?: number;
+  width?: number;
+  aspect_ratio?: number;
 }
 
 interface TmdbDetail {
@@ -186,8 +188,9 @@ async function enrich(raw: TmdbListItem, kind: MediaKind): Promise<MediaItem> {
 
   try {
     const detail = await tmdb<TmdbDetail>(`/${endpoint}/${raw.id}`, {
+      // No `include_image_language`: TMDB then returns every language, and
+      // `rankCommunityPosters` keeps the ones this title may wear.
       append_to_response: "credits,videos,images,external_ids",
-      include_image_language: "null,en",
     });
 
     const crew = detail.credits?.crew ?? [];
@@ -311,7 +314,12 @@ async function enrich(raw: TmdbListItem, kind: MediaKind): Promise<MediaItem> {
     const mins = detail.runtime ?? detail.episode_run_time?.[0];
     if (mins) item.runtime = `${mins} min`;
 
-    const alts = rankCommunityPosters(detail.images?.posters, raw.poster_path);
+    const alts = rankCommunityPosters(
+      detail.images?.posters,
+      raw.poster_path,
+      6,
+      raw.original_language,
+    );
     if (alts.length) {
       item.poster = `${IMG}/w500${alts[0]}`;
       item.posters = alts.map((path) => `${IMG}/w500${path}`);
@@ -370,36 +378,33 @@ export function rankCommunityPosters(
   posters: TmdbPoster[] | undefined,
   defaultPath?: string | null,
   limit = 6,
+  originalLanguage?: string | null,
 ): string[] {
   /*
-     Two gates, because "has been voted on" turned out to be a low bar.
+     Which languages may appear on a poster: none at all, English, or the
+     language the title was made in.
 
-     Ranking alone let real duds into the rotation: Fight Club's sixth-best
-     scored 3.3 from 3 voters, and single-voter perfect scores — 4 votes at
-     10.0 — floated up on both Dune and Shawshank, which is the same trap the
-     title rails have with `vote_average.desc`.
+     Restricting to `null,en` starved exactly the tabs that needed help most —
+     13 of 72 anime titles could rotate, and 1 of 24 Arabic ones. Attack on
+     Titan carries 40 Japanese posters that were being thrown away, and they
+     are not a compromise for an anime; they are the artwork the show actually
+     shipped with. The same goes for an Arabic film's Arabic sheet.
 
-     A vote floor drops the outliers, and an average floor drops the ones that
-     are merely well-attended: 4.7 from 54 people is a poster 54 people looked
-     at and disliked. Measured across eleven popular titles this leaves four to
-     six survivors each — enough to rotate through, and all of them genuinely
-     liked. Where a title has only one or two that clear the bar, it rotates
-     between those or not at all, which is the honest outcome.
+     Everything else still goes: a Ukrainian or Thai wordmark on a Hollywood
+     film is not artwork with a point of view, it is the same poster someone
+     else localised.
   */
-  const MIN_VOTES = 5;
-  const MIN_AVERAGE = 5.5;
+  const languages = new Set<string | null>([null, "en"]);
+  if (originalLanguage) languages.add(originalLanguage);
 
-  const candidates = (posters ?? []).filter(
-    (p) =>
-      p.file_path &&
-      p.file_path !== defaultPath &&
-      (p.vote_count ?? 0) >= MIN_VOTES &&
-      (p.vote_average ?? 0) >= MIN_AVERAGE,
+  const all = (posters ?? []).filter(
+    (p) => p.file_path && p.file_path !== defaultPath && languages.has(p.iso_639_1),
   );
-  if (!candidates.length) return [];
+  if (!all.length) return defaultPath ? [defaultPath] : [];
 
-  const mean =
-    candidates.reduce((sum, p) => sum + (p.vote_average ?? 0), 0) / candidates.length;
+  const mean = all.length
+    ? all.reduce((sum, p) => sum + (p.vote_average ?? 0), 0) / all.length
+    : 0;
 
   /*
      The vote count at which a poster's own average starts to be trusted.
@@ -411,19 +416,97 @@ export function rankCommunityPosters(
   */
   const CONFIDENCE = 8;
 
-  return candidates
-    .map((poster) => ({
-      path: poster.file_path,
-      score: weightedRating(
-        poster.vote_average ?? 0,
-        poster.vote_count ?? 0,
-        mean,
-        CONFIDENCE,
+  const rank = (pool: TmdbPoster[]) =>
+    pool
+      .map((poster) => ({
+        path: poster.file_path,
+        score: weightedRating(
+          poster.vote_average ?? 0,
+          poster.vote_count ?? 0,
+          mean,
+          CONFIDENCE,
+        ),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .map((p) => p.path);
+
+  /*
+     Three tiers, in strict order of preference.
+
+     The first is the bar that matters: enough votes to mean something, and an
+     average that says people liked it. That alone was too thin to rotate
+     through, and not because the bar was wrong — the data is simply sparse.
+     Attack on Titan carries 113 candidate posters, 78 of them voted on, and
+     exactly 4 average above 5.0. Most uploads are rated by nobody or rated
+     badly, so on the anime rail 60 titles of 72 had no alternative at all.
+
+     So the shortfall is filled rather than the bar lowered. The official sheet
+     comes next — it is the community's own first-ranked image, and while it is
+     too generic to *lead* with, it is a perfectly good second face for a title
+     that has only one alternative. Anything still missing is made up from
+     decently-rated posters that are merely thinly voted.
+
+     Order is preference, not just presentation: index 0 becomes `poster` for
+     consumers that ignore the list, so the best-supported image stays the one
+     a client sees when it only wants one.
+  */
+  const STRICT_VOTES = 5;
+  const STRICT_AVERAGE = 5.5;
+  const FILLER_AVERAGE = 4.5;
+
+  const chosen: string[] = rank(
+    all.filter(
+      (p) => (p.vote_count ?? 0) >= STRICT_VOTES && (p.vote_average ?? 0) >= STRICT_AVERAGE,
+    ),
+  ).slice(0, limit);
+
+  if (chosen.length < limit && defaultPath) chosen.push(defaultPath);
+
+  if (chosen.length < limit) {
+    const filler = rank(
+      all.filter(
+        (p) =>
+          (p.vote_count ?? 0) >= 1 &&
+          (p.vote_average ?? 0) >= FILLER_AVERAGE &&
+          !chosen.includes(p.file_path),
       ),
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((p) => p.path);
+    );
+    chosen.push(...filler.slice(0, limit - chosen.length));
+  }
+
+  /*
+     Last resort: good-looking uploads nobody has rated.
+
+     Voting is the thinnest part of this data. Attack on Titan has 78 rated
+     posters and only 8 of them average above 4.5, which is why the anime and
+     Arabic rails still barely rotated after the tiers above — those
+     catalogues are not badly rated so much as unrated.
+
+     Unrated is not the same as bad, so the shape of the file stands in for the
+     votes that don't exist: full width, and an aspect ratio close to the 2:3
+     a poster is supposed to be. That rejects the crops, banners and phone
+     wallpapers that would otherwise letterbox inside a card. Widest first,
+     since among images nobody has judged the sharpest is the safest guess.
+
+     Strictly filler. It cannot displace anything above it, so a title with
+     well-liked artwork never shows one of these.
+  */
+  if (chosen.length < limit) {
+    const unrated = all
+      .filter(
+        (p) =>
+          (p.vote_count ?? 0) === 0 &&
+          (p.width ?? 0) >= 500 &&
+          (p.aspect_ratio ?? 0) >= 0.6 &&
+          (p.aspect_ratio ?? 0) <= 0.72 &&
+          !chosen.includes(p.file_path),
+      )
+      .sort((a, b) => (b.width ?? 0) - (a.width ?? 0))
+      .map((p) => p.file_path);
+    chosen.push(...unrated.slice(0, limit - chosen.length));
+  }
+
+  return chosen;
 }
 
 /** The single best community poster — the head of the ranking above. */
@@ -493,13 +576,18 @@ export async function withCommunityPosters<T extends PosterUpgradable>(items: T[
     if (hit !== undefined) return hit;
 
     const endpoint = kind === "movie" ? "movie" : "tv";
-    const detail = await tmdb<{ poster_path?: string | null; images?: { posters?: TmdbPoster[] } }>(
-      `/${endpoint}/${tmdbId}`,
-      { append_to_response: "images", include_image_language: "null,en" },
-      86400,
-    );
+    const detail = await tmdb<{
+      poster_path?: string | null;
+      original_language?: string;
+      images?: { posters?: TmdbPoster[] };
+    }>(`/${endpoint}/${tmdbId}`, { append_to_response: "images" }, 86400);
 
-    const paths = rankCommunityPosters(detail.images?.posters, detail.poster_path);
+    const paths = rankCommunityPosters(
+      detail.images?.posters,
+      detail.poster_path,
+      6,
+      detail.original_language,
+    );
     resolved.set(memo, paths);
     return paths;
   };
