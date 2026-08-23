@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "CineSync",
+    "slug": "cinesync",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "cinesync",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#050505",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.elwaadudi.cinesync",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        },
+        "UIRequiresFullScreen": false
+      }
+    },
+    "android": {
+      "package": "com.elwaadudi.cinesync",
+      "adaptiveIcon": {
+        "backgroundColor": "#050505"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#050505",
+          "resizeMode": "contain",
+          "imageWidth": 160
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

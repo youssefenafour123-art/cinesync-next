@@ -4,9 +4,16 @@
 # reads this file, creates the service, and redeploys it on every push to main.
 #
 # The app is a Node.js server, not a static site: every tab is fed by a route
-# handler under app/api that talks to TMDB, Cinemeta and Wikipedia server-side,
-# and the TMDB key is deliberately kept off the browser. A static export would
-# ship none of that.
+# handler under apps/web/app/api that talks to TMDB, Cinemeta and Wikipedia
+# server-side, and the TMDB key is deliberately kept off the browser. A static
+# export would ship none of that.
+#
+# This repo is an npm workspace monorepo (apps/web, apps/mobile,
+# packages/shared), so the build runs from the repo root — that is where the
+# single package-lock.json lives — and targets the web workspace by name. The
+# mobile app's dependencies are not installed here; `--workspace cinesync-next`
+# scopes the install to the web app plus the shared package it depends on,
+# which keeps the free-plan build from downloading the whole Expo toolchain.
 services:
   - type: web
     name: cinesync
@@ -20,8 +27,8 @@ services:
     # `npm ci` rather than `npm install`: it installs exactly what
     # package-lock.json pins, so a deploy can't quietly pick up a different
     # version of Next than the one this was verified against.
-    buildCommand: npm ci && npm run build
-    startCommand: npm start
+    buildCommand: npm ci --workspace cinesync-next --include-workspace-root && npm run build --workspace cinesync-next
+    startCommand: npm run start --workspace cinesync-next
     # `next start` binds 0.0.0.0 and reads PORT, which Render sets for us — no
     # port flag needed in the start command.
     healthCheckPath: /
@@ -39,9 +46,9 @@ services:
       - key: TMDB_API_KEY
         sync: false
       # NEXT_PUBLIC_SITE_URL: the absolute origin used to resolve the social
-      # card (app/layout.tsx `metadataBase`). It can only be filled in after the
-      # first deploy, since that is when the .onrender.com hostname exists — set
-      # it then and redeploy. Until then link previews point at localhost, which
-      # affects nothing else.
+      # card (apps/web/app/layout.tsx `metadataBase`). It can only be filled in
+      # after the first deploy, since that is when the .onrender.com hostname
+      # exists — set it then and redeploy. Until then link previews point at
+      # localhost, which affects nothing else.
       - key: NEXT_PUBLIC_SITE_URL
         sync: false
