@@ -189,7 +189,8 @@ function DayEntry({ entry, reduced }: { entry: CalendarEntry; reduced: boolean }
           aria-label={`Details for ${entry.title}`}
           className="h-[150px] w-[100px] shrink-0 overflow-hidden rounded-lg border border-white/10 transition-transform hover:scale-[1.03] md:h-[186px] md:w-[124px]"
         >
-          <PosterImage src={entry.poster} alt={entry.title} className="h-full w-full object-cover" />
+          <PosterImage src={entry.poster}
+            variants={entry.posters} alt={entry.title} className="h-full w-full object-cover" />
         </button>
 
         <div className="min-w-0 flex-1">

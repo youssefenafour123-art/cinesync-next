@@ -311,8 +311,11 @@ async function enrich(raw: TmdbListItem, kind: MediaKind): Promise<MediaItem> {
     const mins = detail.runtime ?? detail.episode_run_time?.[0];
     if (mins) item.runtime = `${mins} min`;
 
-    const alt = pickCommunityPoster(detail.images?.posters, raw.poster_path);
-    if (alt) item.poster = `${IMG}/w500${alt}`;
+    const alts = rankCommunityPosters(detail.images?.posters, raw.poster_path);
+    if (alts.length) {
+      item.poster = `${IMG}/w500${alts[0]}`;
+      item.posters = alts.map((path) => `${IMG}/w500${path}`);
+    }
 
     const imdbId = detail.external_ids?.imdb_id;
     if (imdbId) {
@@ -363,14 +366,15 @@ async function enrich(raw: TmdbListItem, kind: MediaKind): Promise<MediaItem> {
  * is what keeps a Ukrainian or Thai wordmark off an English page — there are
  * more of those on a popular film than there are English ones.
  */
-export function pickCommunityPoster(
+export function rankCommunityPosters(
   posters: TmdbPoster[] | undefined,
   defaultPath?: string | null,
-): string | undefined {
+  limit = 6,
+): string[] {
   const candidates = (posters ?? []).filter(
     (p) => p.file_path && p.file_path !== defaultPath && (p.vote_count ?? 0) > 0,
   );
-  if (!candidates.length) return undefined;
+  if (!candidates.length) return [];
 
   const mean =
     candidates.reduce((sum, p) => sum + (p.vote_average ?? 0), 0) / candidates.length;
@@ -385,22 +389,27 @@ export function pickCommunityPoster(
   */
   const CONFIDENCE = 8;
 
-  let best = candidates[0];
-  let bestScore = -Infinity;
-  for (const poster of candidates) {
-    const score = weightedRating(
-      poster.vote_average ?? 0,
-      poster.vote_count ?? 0,
-      mean,
-      CONFIDENCE,
-    );
-    if (score > bestScore) {
-      bestScore = score;
-      best = poster;
-    }
-  }
+  return candidates
+    .map((poster) => ({
+      path: poster.file_path,
+      score: weightedRating(
+        poster.vote_average ?? 0,
+        poster.vote_count ?? 0,
+        mean,
+        CONFIDENCE,
+      ),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((p) => p.path);
+}
 
-  return best.file_path;
+/** The single best community poster — the head of the ranking above. */
+export function pickCommunityPoster(
+  posters: TmdbPoster[] | undefined,
+  defaultPath?: string | null,
+): string | undefined {
+  return rankCommunityPosters(posters, defaultPath, 1)[0];
 }
 
 /** Runs `task` over `items` with at most `limit` in flight. */
@@ -454,9 +463,9 @@ interface PosterUpgradable {
  * worth failing a build over.
  */
 export async function withCommunityPosters<T extends PosterUpgradable>(items: T[]): Promise<T[]> {
-  const resolved = new Map<string, string | null>();
+  const resolved = new Map<string, string[]>();
 
-  const artwork = async (tmdbId: number, kind: MediaKind): Promise<string | null> => {
+  const artwork = async (tmdbId: number, kind: MediaKind): Promise<string[]> => {
     const memo = `${kind}:${tmdbId}`;
     const hit = resolved.get(memo);
     if (hit !== undefined) return hit;
@@ -468,9 +477,9 @@ export async function withCommunityPosters<T extends PosterUpgradable>(items: T[
       86400,
     );
 
-    const path = pickCommunityPoster(detail.images?.posters, detail.poster_path) ?? null;
-    resolved.set(memo, path);
-    return path;
+    const paths = rankCommunityPosters(detail.images?.posters, detail.poster_path);
+    resolved.set(memo, paths);
+    return paths;
   };
 
   return mapLimit(items, 8, async (item) => {
@@ -488,8 +497,10 @@ export async function withCommunityPosters<T extends PosterUpgradable>(items: T[
         kind = found.kind;
       }
 
-      const path = await artwork(tmdbId, kind);
-      return path ? { ...item, poster: `${IMG}/w500${path}` } : item;
+      const paths = await artwork(tmdbId, kind);
+      if (!paths.length) return item;
+      const urls = paths.map((path) => `${IMG}/w500${path}`);
+      return { ...item, poster: urls[0], posters: urls };
     } catch {
       return item;
     }

@@ -1,9 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { posterVariant } from "@/lib/posterVariant";
 
 interface PosterImageProps {
   src?: string;
+  /**
+   * Community artwork to rotate through, best-voted first. Where a route
+   * supplies it, one is chosen per page load; where it doesn't, `src` is used
+   * unchanged.
+   */
+  variants?: string[];
   alt: string;
   className?: string;
 }
@@ -14,10 +21,11 @@ interface PosterImageProps {
  * which frequently 404'd too. This falls back to a rendered placeholder that
  * can never fail.
  */
-export function PosterImage({ src, alt, className = "" }: PosterImageProps) {
+export function PosterImage({ src, variants, alt, className = "" }: PosterImageProps) {
   const [failed, setFailed] = useState(false);
+  const chosen = useMemo(() => posterVariant(src, variants), [src, variants]);
 
-  if (!src || failed) {
+  if (!chosen || failed) {
     return (
       <div
         className={`flex items-center justify-center bg-surface-container text-on-surface-variant/40 ${className}`}
@@ -34,7 +42,11 @@ export function PosterImage({ src, alt, className = "" }: PosterImageProps) {
     // would need every domain allow-listed; a plain img keeps them working.
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={src}
+      // `key` so a different variant remounts the element rather than swapping
+      // the URL under a stale `failed` flag — one dead poster must not blank
+      // the replacement chosen on the next load.
+      key={chosen}
+      src={chosen}
       alt={alt}
       loading="lazy"
       className={className}

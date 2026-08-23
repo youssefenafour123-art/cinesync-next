@@ -435,7 +435,8 @@ function DayCell({
             key={e.key}
             className="relative min-w-0 flex-1 overflow-hidden rounded-md border border-white/10"
           >
-            <PosterImage src={e.poster} alt="" className="h-full w-full object-cover" />
+            <PosterImage src={e.poster}
+              variants={e.posters} alt="" className="h-full w-full object-cover" />
           </div>
         ))}
         {entries.length > 3 ? (
@@ -559,7 +560,8 @@ function EntryRow({ entry }: { entry: CalendarEntry }) {
       className="poster-glow flex gap-4 rounded-xl border border-white/10 bg-surface-container/50 p-3 text-left transition-colors hover:border-primary/40"
     >
       <div className="h-[108px] w-[72px] shrink-0 overflow-hidden rounded-lg border border-white/10">
-        <PosterImage src={entry.poster} alt={entry.title} className="h-full w-full object-cover" />
+        <PosterImage src={entry.poster}
+          variants={entry.posters} alt={entry.title} className="h-full w-full object-cover" />
       </div>
 
       <div className="min-w-0 flex-1">

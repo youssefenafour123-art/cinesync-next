@@ -120,14 +120,16 @@ export function DetailsModal({ item }: { item: MediaItem }) {
 
       {/* Mobile poster header */}
       <div className="relative h-[38vh] w-full shrink-0 md:hidden">
-        <PosterImage src={full.poster} alt={full.title} className="h-full w-full object-cover" />
+        <PosterImage src={full.poster}
+          variants={full.posters} alt={full.title} className="h-full w-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#121212] via-[#121212]/60 to-transparent" />
       </div>
 
       {/* Desktop poster + actions */}
       <div className="hidden w-[340px] shrink-0 self-start p-8 md:block">
         <div className="aspect-[2/3] overflow-hidden rounded-lg shadow-[0_20px_60px_rgba(0,0,0,0.7)]">
-          <PosterImage src={full.poster} alt={full.title} className="h-full w-full object-cover" />
+          <PosterImage src={full.poster}
+          variants={full.posters} alt={full.title} className="h-full w-full object-cover" />
         </div>
 
         <div className="mt-6 flex flex-col gap-3">

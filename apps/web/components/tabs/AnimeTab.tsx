@@ -187,6 +187,7 @@ function SearchResults({
         >
           <PosterImage
             src={item.poster}
+          variants={item.posters}
             alt={item.title}
             className="h-[72px] w-12 shrink-0 rounded-lg object-cover"
           />

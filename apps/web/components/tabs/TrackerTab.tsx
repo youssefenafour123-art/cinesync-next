@@ -131,7 +131,8 @@ function TrackerCard({ item }: { item: MediaItem }) {
       aria-label={`Open details for ${item.title}`}
     >
       <div className="carousel-poster">
-        <PosterImage src={item.poster} alt={item.title} className="h-full w-full object-cover" />
+        <PosterImage src={item.poster}
+          variants={item.posters} alt={item.title} className="h-full w-full object-cover" />
         {item.rating ? <div className="carousel-badge">★ {item.rating}</div> : null}
         {inLibrary ? (
           <div className="absolute right-2 top-2 flex items-center gap-1 rounded-full border border-white/20 bg-primary/90 px-2 py-1 text-[11px] font-bold text-[#002113] backdrop-blur-sm">

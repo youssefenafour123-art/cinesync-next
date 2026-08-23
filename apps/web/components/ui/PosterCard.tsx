@@ -71,6 +71,7 @@ export function PosterCard({ item, variant = "rail", showMeta = true }: PosterCa
       >
         <PosterImage
           src={item.poster}
+          variants={item.posters}
           alt={item.title}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />

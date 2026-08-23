@@ -177,7 +177,8 @@ function CuratedCard({ item }: { item: MediaItem }) {
         onClick={() => openDetails(item)}
         className="movie-card poster-glow group relative aspect-[2/3] cursor-pointer overflow-hidden rounded border border-white/5 bg-surface-container"
       >
-        <PosterImage src={item.poster} alt={item.title} className="h-full w-full object-cover" />
+        <PosterImage src={item.poster}
+            variants={item.posters} alt={item.title} className="h-full w-full object-cover" />
 
         {inLibrary ? (
           <div className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full border border-white/20 bg-primary/90 px-2 py-1 text-[11px] font-bold text-[#002113] backdrop-blur-sm">

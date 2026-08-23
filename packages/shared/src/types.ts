@@ -11,6 +11,15 @@ export interface MediaItem {
   title: string;
   kind: MediaKind;
   poster?: string;
+  /**
+   * Community artwork for this title, best-voted first, with `poster` as the
+   * first entry. The UI rotates through these so a title doesn't wear the same
+   * face on every visit — see `posterVariant` in the web app.
+   *
+   * Optional everywhere: only the routes that upgrade artwork fill it, and a
+   * consumer that ignores it still gets a working `poster`.
+   */
+  posters?: string[];
   backdrop?: string;
   year?: string;
   /** Formatted release date, e.g. "Mar 1, 2024". */
@@ -197,6 +206,8 @@ export interface CalendarEntry {
   title: string;
   kind: MediaKind;
   poster?: string;
+  /** Alternatives for `poster`, best-voted first. See `MediaItem.posters`. */
+  posters?: string[];
   backdrop?: string;
   /** ISO `YYYY-MM-DD`, in TMDB's own dating. */
   date: string;
