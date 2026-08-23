@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAppStore } from "@/store/useAppStore";
 import { useMotionPreference } from "@/lib/useReducedMotion";
-import { stremioAccounts, useSourcesStore } from "@/store/useSourcesStore";
-import { fetchLibraryIds } from "@/lib/stremio";
+import { useSourcesStore } from "@/store/useSourcesStore";
+import { useLibrarySync } from "@/lib/useLibrarySync";
 
 import { TopNav } from "@/components/layout/TopNav";
 import { BottomNav } from "@/components/layout/BottomNav";
@@ -36,13 +36,14 @@ export default function Home() {
   const addSourceOpen = useAppStore((s) => s.addSourceOpen);
   const searchOpen = useAppStore((s) => s.searchOpen);
   const personId = useAppStore((s) => s.personId);
-  const setLibraryIds = useAppStore((s) => s.setLibraryIds);
 
   const motionPreference = useMotionPreference();
 
   const hydrate = useSourcesStore((s) => s.hydrate);
-  const hydrated = useSourcesStore((s) => s.hydrated);
-  const sources = useSourcesStore((s) => s.sources);
+
+  // Keeps the "In Library" badges honest, including after a title is deleted
+  // from the Stremio app while this tab sits in the background.
+  useLibrarySync();
 
   const [wall, setWall] = useState<string[]>([]);
   const onWall = useCallback((posters: string[]) => setWall(posters), []);
@@ -65,26 +66,6 @@ export default function Home() {
   useEffect(() => {
     document.documentElement.dataset.motion = motionPreference;
   }, [motionPreference]);
-
-  // Pull known library IDs once accounts are known, so "In Library" badges are
-  // correct everywhere without each card making its own request.
-  useEffect(() => {
-    if (!hydrated) return;
-    const accounts = stremioAccounts(sources);
-    if (!accounts.length) return;
-
-    let cancelled = false;
-    void Promise.all(accounts.map((a) => fetchLibraryIds(a.authKey))).then((sets) => {
-      if (cancelled) return;
-      const merged = new Set<string>();
-      for (const s of sets) for (const id of s) merged.add(id);
-      setLibraryIds(merged);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [hydrated, sources, setLibraryIds]);
 
   // Each tab starts at the top rather than inheriting the previous scroll.
   useEffect(() => {

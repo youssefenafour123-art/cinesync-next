@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { fetchLibraryIds, putSyncItem } from "./stremio";
+import { fetchLibrarySnapshot, putSyncItem, type LibrarySnapshot } from "./stremio";
 import { stremioAccounts, useSourcesStore } from "@/store/useSourcesStore";
 import { useAppStore } from "@/store/useAppStore";
 import type { HistoryEntry, SyncItem } from "./types";
@@ -46,7 +46,7 @@ export function useSync() {
 
   const sources = useSourcesStore((s) => s.sources);
   const addHistory = useSourcesStore((s) => s.addHistory);
-  const setLibraryIds = useAppStore((s) => s.setLibraryIds);
+  const setLibrary = useAppStore((s) => s.setLibrary);
 
   const reset = useCallback(() => {
     cancelRef.current = false;
@@ -103,15 +103,23 @@ export function useSync() {
 
     // Read each library once up front so already-present titles are skipped
     // instead of re-written.
-    const existing = new Map<string, Set<string>>();
+    const existing = new Map<string, LibrarySnapshot>();
     for (const acc of accounts) {
-      existing.set(acc.authKey, await fetchLibraryIds(acc.authKey));
+      existing.set(acc.authKey, await fetchLibrarySnapshot(acc.authKey));
     }
 
-    // Surface everything already in a library as "In Library" across the app.
+    // Two sets, because "don't write this again" and "show it as In Library"
+    // stopped being the same question once deletions became visible. A title
+    // the user removed in Stremio is still in `known` — so sync leaves it
+    // alone rather than resurrecting it — but it is no longer in `inLibrary`,
+    // so it carries no badge.
+    const allInLibrary = new Set<string>();
     const allKnown = new Set<string>();
-    for (const set of existing.values()) for (const id of set) allKnown.add(id);
-    setLibraryIds(allKnown);
+    for (const snap of existing.values()) {
+      for (const id of snap.inLibrary) allInLibrary.add(id);
+      for (const id of snap.known) allKnown.add(id);
+    }
+    setLibrary({ inLibrary: new Set(allInLibrary), known: new Set(allKnown) });
 
     const total = items.length * accounts.length;
     let done = 0;
@@ -131,14 +139,16 @@ export function useSync() {
         done++;
 
         const lib = existing.get(acc.authKey);
-        if (lib?.has(item.id)) {
+        if (lib?.known.has(item.id)) {
           skipped++;
         } else {
           try {
             await putSyncItem(item, acc.authKey);
             added++;
-            lib?.add(item.id);
+            lib?.known.add(item.id);
+            lib?.inLibrary.add(item.id);
             allKnown.add(item.id);
+            allInLibrary.add(item.id);
             landedSomewhere = true;
           } catch {
             failed++;
@@ -166,7 +176,7 @@ export function useSync() {
     }
 
     if (imported.length) addHistory(imported);
-    setLibraryIds(new Set(allKnown));
+    setLibrary({ inLibrary: new Set(allInLibrary), known: new Set(allKnown) });
 
     const cancelled = cancelRef.current;
     runningRef.current = false;
@@ -182,7 +192,7 @@ export function useSync() {
           : "Your library is up to date.",
       percent: cancelled ? s.percent : 100,
     }));
-  }, [sources, addHistory, setLibraryIds]);
+  }, [sources, addHistory, setLibrary]);
 
   return { state, start, cancel, reset, running: state.phase === "running" };
 }

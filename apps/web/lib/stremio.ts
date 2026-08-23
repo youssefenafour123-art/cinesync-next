@@ -40,30 +40,82 @@ export async function login(email: string, password: string): Promise<string> {
 }
 
 /**
- * IDs already present in an account's library — drives both the sync skip
- * logic and the "In Library" badge.
+ * A snapshot of one account's library.
  *
- * `datastoreMeta` returns rows as `[id, mtime]` pairs, not objects. The legacy
- * code did `result.map(i => i._id)`, which yields `undefined` for every row;
- * because sync never worked at all, that was never caught. Both shapes are
- * handled here so a Stremio response-format change can't silently empty the set.
+ * `inLibrary` is what the account actually holds right now; `known` is every
+ * row Stremio still stores for it, deletions included. They are kept apart
+ * because they answer different questions — see `fetchLibrarySnapshot`.
  */
-export async function fetchLibraryIds(authKey: string): Promise<Set<string>> {
-  try {
-    const data = await call<
-      { result?: (string | [string, unknown] | { _id?: string })[] } & StremioError
-    >("datastoreMeta", { authKey, collection: "libraryItem" });
+export interface LibrarySnapshot {
+  inLibrary: Set<string>;
+  known: Set<string>;
+}
 
-    const ids = new Set<string>();
+export function emptySnapshot(): LibrarySnapshot {
+  return { inLibrary: new Set(), known: new Set() };
+}
+
+export function mergeSnapshots(snapshots: LibrarySnapshot[]): LibrarySnapshot {
+  const merged = emptySnapshot();
+  for (const snap of snapshots) {
+    for (const id of snap.inLibrary) merged.inLibrary.add(id);
+    for (const id of snap.known) merged.known.add(id);
+  }
+  return merged;
+}
+
+interface RemoteLibraryItem {
+  _id?: string;
+  removed?: boolean;
+}
+
+/**
+ * Reads an account's library and splits it into what is still in it and what
+ * it has ever held.
+ *
+ * Stremio deletes are soft: removing a title in the app flips `removed` to
+ * true and pushes the same row back with a fresh `_mtime`, and the server
+ * keeps that row for a year (stremio-core `LibraryItem::should_sync`). So
+ * `datastoreMeta`, which returns one `[id, mtime]` pair per stored row, still
+ * lists everything the user deleted. Reading ids from it — which is what this
+ * did — meant a title deleted in Stremio kept its "In Library" badge here
+ * forever and was skipped by every later sync as already present.
+ *
+ * `datastoreGet` returns the rows themselves, so `removed` is readable and the
+ * two sets can be told apart:
+ *
+ *   - `inLibrary` drives the badges. It matches what Stremio's own Library
+ *     board shows, which is `!removed` (`LibraryFilter::NotRemoved`).
+ *   - `known` is every id including the removed ones, and drives sync's skip
+ *     logic, so a title the user deliberately deleted is not resurrected by
+ *     the next merge of the IMDb list it came from.
+ */
+export async function fetchLibrarySnapshot(authKey: string): Promise<LibrarySnapshot> {
+  try {
+    const data = await call<{ result?: RemoteLibraryItem[] } & StremioError>("datastoreGet", {
+      authKey,
+      collection: "libraryItem",
+      ids: [],
+      all: true,
+    });
+    if (data.error) throw new Error(data.error.message);
+
+    const snapshot = emptySnapshot();
     for (const row of data.result ?? []) {
-      if (typeof row === "string") ids.add(row);
-      else if (Array.isArray(row)) {
-        if (typeof row[0] === "string") ids.add(row[0]);
-      } else if (row && typeof row._id === "string") ids.add(row._id);
+      const id = row?._id;
+      if (typeof id !== "string" || !id) continue;
+      snapshot.known.add(id);
+      // `temp` rows are the ones Stremio creates just from pressing play; they
+      // carry `removed: true` until the title is explicitly added, so the
+      // `removed` check covers them on its own.
+      if (row.removed !== true) snapshot.inLibrary.add(id);
     }
-    return ids;
+    return snapshot;
   } catch {
-    return new Set();
+    // An empty snapshot leaves badges off and lets sync write, which is the
+    // safe way to be wrong: nothing is claimed to be in a library we could not
+    // read. Deliberately no `datastoreMeta` fallback — it cannot see deletions.
+    return emptySnapshot();
   }
 }
 

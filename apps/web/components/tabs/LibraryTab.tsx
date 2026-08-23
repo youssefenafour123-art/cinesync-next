@@ -1,9 +1,11 @@
 "use client";
 
+import { useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSourcesStore } from "@/store/useSourcesStore";
 import { useAppStore } from "@/store/useAppStore";
 import { useSync } from "@/lib/useSync";
+import { useLibraryRefresh } from "@/lib/useLibrarySync";
 import { metahubPoster } from "@/lib/stremio";
 import { Icon } from "@/components/ui/Icon";
 import { PosterImage } from "@/components/ui/PosterImage";
@@ -15,9 +17,24 @@ export function LibraryTab() {
   const history = useSourcesStore((s) => s.history);
   const removeSource = useSourcesStore((s) => s.removeSource);
   const setAddSourceOpen = useAppStore((s) => s.setAddSourceOpen);
+  const libraryIds = useAppStore((s) => s.libraryIds);
+  const libraryLoaded = useAppStore((s) => s.libraryLoaded);
   const { state, start, cancel, running } = useSync();
+  const { refresh, pending: refreshing, connected } = useLibraryRefresh();
 
   const showProgress = state.phase !== "idle";
+
+  /*
+    Recent Imports is a log of what this app wrote, but it is read as a view of
+    the library — so a title deleted in the Stremio app kept a poster here long
+    after it was gone. Deletions are only knowable once a library has actually
+    been read, hence the `libraryLoaded` gate: before that, filtering would
+    empty the section on every cold load.
+  */
+  const recent = useMemo(
+    () => (libraryLoaded ? history.filter((h) => libraryIds.has(h.id)) : history),
+    [history, libraryIds, libraryLoaded],
+  );
 
   return (
     <div className="mx-auto w-full max-w-container-max px-margin-mobile pb-16 pt-8 md:px-margin-desktop">
@@ -166,14 +183,29 @@ export function LibraryTab() {
 
       {/* ---- Recent imports ---- */}
       <section>
-        <h3 className="mb-6 font-title-lg text-title-lg text-on-surface">Recent Imports</h3>
-        {history.length === 0 ? (
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <h3 className="font-title-lg text-title-lg text-on-surface">Recent Imports</h3>
+          {connected ? (
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={refreshing}
+              className="flex shrink-0 items-center gap-2 rounded-full bg-surface-container px-4 py-2 font-label-md text-label-md text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface disabled:opacity-60"
+            >
+              <Icon name="refresh" className={`text-[18px] ${refreshing ? "animate-spin" : ""}`} />
+              {refreshing ? "Refreshing…" : "Refresh from Stremio"}
+            </button>
+          ) : null}
+        </div>
+        {recent.length === 0 ? (
           <div className="rounded-lg border border-dashed border-white/10 py-10 text-center font-body-md text-body-md text-on-surface-variant">
-            No recent imports found. Click Start Sync!
+            {history.length > 0
+              ? "Everything imported recently has since been removed from your Stremio library."
+              : "No recent imports found. Click Start Sync!"}
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-6">
-            {history.slice(0, 6).map((h) => (
+            {recent.slice(0, 6).map((h) => (
               <motion.div
                 key={`${h.id}-${h.timestamp}`}
                 initial={{ opacity: 0, y: 16 }}

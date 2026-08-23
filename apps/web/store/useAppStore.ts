@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import type { LibrarySnapshot } from "@/lib/stremio";
 import type { MediaItem } from "@/lib/types";
 
 /**
@@ -50,9 +51,16 @@ interface AppState {
   searchOpen: boolean;
   setSearchOpen: (open: boolean) => void;
 
-  /** IMDb IDs known to be in a connected library — drives the "In Library" badge. */
+  /** IMDb IDs currently in a connected library — drives the "In Library" badge. */
   libraryIds: Set<string>;
-  setLibraryIds: (ids: Set<string>) => void;
+  /**
+   * Every IMDb ID a connected library has ever held, deletions included.
+   * Sync reads this so a title the user removed in Stremio is not written back.
+   */
+  knownLibraryIds: Set<string>;
+  /** False until a library has actually been read, so an empty set can be told from an unread one. */
+  libraryLoaded: boolean;
+  setLibrary: (snapshot: LibrarySnapshot) => void;
   markInLibrary: (id: string) => void;
 
   toast: string | null;
@@ -88,12 +96,21 @@ export const useAppStore = create<AppState>((set) => ({
   setSearchOpen: (searchOpen) => set({ searchOpen }),
 
   libraryIds: new Set<string>(),
-  setLibraryIds: (libraryIds) => set({ libraryIds }),
+  knownLibraryIds: new Set<string>(),
+  libraryLoaded: false,
+  setLibrary: (snapshot) =>
+    set({
+      libraryIds: snapshot.inLibrary,
+      knownLibraryIds: snapshot.known,
+      libraryLoaded: true,
+    }),
   markInLibrary: (id) =>
     set((s) => {
-      const next = new Set(s.libraryIds);
-      next.add(id);
-      return { libraryIds: next };
+      const libraryIds = new Set(s.libraryIds);
+      libraryIds.add(id);
+      const knownLibraryIds = new Set(s.knownLibraryIds);
+      knownLibraryIds.add(id);
+      return { libraryIds, knownLibraryIds };
     }),
 
   toast: null,
