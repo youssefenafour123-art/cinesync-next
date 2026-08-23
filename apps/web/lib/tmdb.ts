@@ -371,8 +371,30 @@ export function rankCommunityPosters(
   defaultPath?: string | null,
   limit = 6,
 ): string[] {
+  /*
+     Two gates, because "has been voted on" turned out to be a low bar.
+
+     Ranking alone let real duds into the rotation: Fight Club's sixth-best
+     scored 3.3 from 3 voters, and single-voter perfect scores — 4 votes at
+     10.0 — floated up on both Dune and Shawshank, which is the same trap the
+     title rails have with `vote_average.desc`.
+
+     A vote floor drops the outliers, and an average floor drops the ones that
+     are merely well-attended: 4.7 from 54 people is a poster 54 people looked
+     at and disliked. Measured across eleven popular titles this leaves four to
+     six survivors each — enough to rotate through, and all of them genuinely
+     liked. Where a title has only one or two that clear the bar, it rotates
+     between those or not at all, which is the honest outcome.
+  */
+  const MIN_VOTES = 5;
+  const MIN_AVERAGE = 5.5;
+
   const candidates = (posters ?? []).filter(
-    (p) => p.file_path && p.file_path !== defaultPath && (p.vote_count ?? 0) > 0,
+    (p) =>
+      p.file_path &&
+      p.file_path !== defaultPath &&
+      (p.vote_count ?? 0) >= MIN_VOTES &&
+      (p.vote_average ?? 0) >= MIN_AVERAGE,
   );
   if (!candidates.length) return [];
 

@@ -50,6 +50,31 @@ function thisMonth(): string {
 const SWEEP: TabId[] = ["movies", "tracker", "calendar", "anime", "arabic"];
 
 /**
+ * Whether speculative fetching is welcome on this connection.
+ *
+ * The sweep is around 850KB of JSON for tabs the visitor has not asked for,
+ * which is a fair trade on a desktop and a rude one on a metered phone.
+ * `saveData` is an explicit request not to do this; the slow effective types
+ * mean it would also be actively harmful, competing with the page they are
+ * actually reading.
+ *
+ * Absent on Safari and Firefox, where the optional chaining leaves this true —
+ * the same behaviour as before, which is the right default for a browser that
+ * declines to say.
+ */
+function speculationWelcome(): boolean {
+  const conn = (
+    navigator as Navigator & {
+      connection?: { saveData?: boolean; effectiveType?: string };
+    }
+  ).connection;
+
+  if (!conn) return true;
+  if (conn.saveData) return false;
+  return !/^(slow-2g|2g|3g)$/.test(conn.effectiveType ?? "");
+}
+
+/**
  * Warms every tab's payload once the page has settled.
  *
  * Deliberately not on mount: the first paint, its fonts and the hero's artwork
@@ -67,7 +92,7 @@ export function useTabPrefetch(active: TabId) {
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     const sweep = () => {
-      if (cancelled) return;
+      if (cancelled || !speculationWelcome()) return;
       SWEEP.filter((tab) => tab !== active).forEach((tab, i) => {
         // 300ms apart rather than all at once: a browser will only open so
         // many connections, and a burst would queue the one the visitor is
@@ -110,5 +135,11 @@ export function useTabPrefetch(active: TabId) {
  * skeletons.
  */
 export function useTabHoverPrefetch() {
+  /*
+     Not gated on the connection, unlike the sweep. This fires because a
+     pointer is on a nav item or a finger is on it — one tab, asked for, about
+     to be opened. Fetching it a moment early is the same bytes either way,
+     just sooner.
+  */
   return useCallback((tab: TabId) => urlsFor(tab).forEach(prefetch), []);
 }

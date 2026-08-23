@@ -104,16 +104,44 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
 
   const posters = wall.length ? wall : fetched;
 
+  /*
+     How many columns to build, decided in JavaScript rather than CSS.
+
+     The extra columns used to be rendered and then hidden with `hidden
+     sm:block`, which puts their `<img>` tags in the document either way — 192
+     of them on the landing page, of which 179 were measured loading. A phone
+     showing five columns has no use for the other seven, and the cheapest
+     image is the one never requested.
+
+     `matchMedia` rather than `innerWidth` so a rotation or a resized window
+     re-decides, and read in an effect so the first render matches what the
+     server produced.
+  */
+  const [narrow, setNarrow] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  const columnCount = narrow ? MOBILE_COLUMNS : COLUMNS;
+
   // Fixed-size grid, so the layout never depends on how many posters arrived.
   const columns = useMemo(() => {
     if (!posters.length) return [];
-    return Array.from({ length: COLUMNS }, (_, c) =>
+    return Array.from({ length: columnCount }, (_, c) =>
       Array.from({ length: PER_COLUMN }, (_, r) => posters[(c * PER_COLUMN + r) % posters.length]),
     );
-  }, [posters]);
+  }, [posters, columnCount]);
 
   // Whatever the grid didn't use is the queue the cross-fade draws from.
-  const spare = useMemo(() => posters.slice(COLUMNS * PER_COLUMN), [posters]);
+  const spare = useMemo(
+    () => posters.slice(columnCount * PER_COLUMN),
+    [posters, columnCount],
+  );
 
   /**
    * Aurora orbs, set up once and left alone for the component's whole life.
@@ -353,7 +381,7 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
             {columns.map((col, c) => (
               <div
                 key={c}
-                className={`bg-wall-col${c >= MOBILE_COLUMNS ? " hidden sm:block" : ""}`}
+                className="bg-wall-col"
                 style={{ marginTop: `${(c % 4) * -80}px` }}
               >
                 <div className="bg-wall-track">

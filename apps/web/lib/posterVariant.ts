@@ -44,3 +44,19 @@ export function posterVariant(primary?: string, variants?: string[]): string | u
 
   return list[hash % list.length];
 }
+
+/**
+ * The TMDB render width this screen actually needs.
+ *
+ * A poster card is about 150px wide on a phone and roughly 220 on a desktop
+ * rail, so a `w500` file is between two and three times the pixels either
+ * needs — and a rail is a dozen of them. TMDB serves fixed widths by path, so
+ * this is a string swap rather than a resize.
+ *
+ * Only `w500` is rewritten, and only downward. Backdrops and profile images
+ * come through other paths at their own widths and are left alone.
+ */
+export function sizedPoster(url?: string): string | undefined {
+  if (!url || typeof window === "undefined") return url;
+  return window.innerWidth <= 640 ? url.replace("/w500/", "/w342/") : url;
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { posterVariant } from "@/lib/posterVariant";
+import { posterVariant, sizedPoster } from "@/lib/posterVariant";
 
 interface PosterImageProps {
   src?: string;
@@ -23,7 +23,7 @@ interface PosterImageProps {
  */
 export function PosterImage({ src, variants, alt, className = "" }: PosterImageProps) {
   const [failed, setFailed] = useState(false);
-  const chosen = useMemo(() => posterVariant(src, variants), [src, variants]);
+  const chosen = useMemo(() => sizedPoster(posterVariant(src, variants)), [src, variants]);
 
   if (!chosen || failed) {
     return (
