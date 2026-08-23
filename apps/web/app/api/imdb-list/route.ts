@@ -1,4 +1,4 @@
-import { ImdbError, fetchImdbList, parseImdbRef } from "@/lib/imdb";
+import { ImdbError, fetchImdbList, isOpaqueProfileUrl, parseImdbRef } from "@/lib/imdb";
 import type { ImdbListPayload } from "@cinesync/shared/payloads";
 
 export const runtime = "nodejs";
@@ -38,13 +38,26 @@ export async function GET(req: Request) {
        useless when they cannot see which shape they have; telling them where
        the right URL is found is not.
     */
+    if (isOpaqueProfileUrl(raw)) {
+      return Response.json(
+        {
+          error:
+            "IMDb's new profile links can't be imported — the handle in them isn't an id " +
+            "IMDb's own API accepts, and there's no public way to translate it. Use the CSV " +
+            "export below instead: on your watchlist, open the ⋯ menu and choose Export.",
+          csv: true,
+        },
+        { status: 422 },
+      );
+    }
+
     const looksLikeImdb = /imdb\.com/i.test(raw);
     return Response.json(
       {
         error: looksLikeImdb
-          ? "That IMDb link doesn't contain a list id. Open your watchlist on IMDb and copy " +
-            "the address bar — it looks like imdb.com/user/ur…/watchlist. A saved list looks " +
-            "like imdb.com/list/ls…."
+          ? "That IMDb link doesn't contain a list id. A saved list looks like " +
+            "imdb.com/list/ls…, and a watchlist can be imported by its owner's id " +
+            "(ur…) or its own list id."
           : "That doesn't look like an IMDb list. Use a list URL (imdb.com/list/ls…) or a " +
             "profile watchlist URL (imdb.com/user/ur…/watchlist).",
       },

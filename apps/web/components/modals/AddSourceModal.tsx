@@ -64,12 +64,18 @@ export function AddSourceModal() {
     setImdbStatus(null);
     try {
       const res = await fetch(`/api/imdb-list?url=${encodeURIComponent(url)}`);
-      const data = (await res.json()) as ImdbListPayload & { error?: string };
+      const data = (await res.json()) as ImdbListPayload & { error?: string; csv?: boolean };
 
       if (!res.ok || data.error) {
         setImdbStatus({ tone: "error", message: data.error ?? "Couldn't read that list." });
-        // A private watchlist is the common failure — surface the CSV route.
-        if (/private/i.test(data.error ?? "")) setShowCsv(true);
+        /*
+           Open the CSV panel when the URL route is a dead end rather than a
+           typo. A private watchlist is one such case; IMDb's new opaque
+           profile links are the other, and there the export is not a fallback
+           but the only way in — `csv` is the server saying so outright rather
+           than this having to pattern-match another message.
+        */
+        if (data.csv || /private/i.test(data.error ?? "")) setShowCsv(true);
         return;
       }
 

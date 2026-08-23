@@ -25,10 +25,33 @@ export type ImdbRef =
   | { kind: "watchlist"; userId: string };
 
 /**
+ * IMDb's newer profile URLs, which carry an opaque handle instead of an id:
+ *   https://www.imdb.com/user/p.jow3whpzfuejzsj7tz4dqksb4m/watchlist/
+ *
+ * These cannot be imported, and not for want of trying. The handle is not an
+ * encoding of the `ur` id — GraphQL rejects it outright with
+ * `Invalid userId`, `Query.user` takes no id argument to look it up with, and
+ * the page that does contain the `ur` id is behind AWS WAF, which answers a
+ * server-side fetch with a challenge rather than HTML. IMDb resolves the
+ * handle inside its own backend and exposes no public equivalent.
+ *
+ * So it is recognised only to say something useful about it. Guessing is not
+ * an option and "that doesn't look like an IMDb list" is wrong — it is one,
+ * it just isn't one this can reach.
+ */
+export function isOpaqueProfileUrl(input: string): boolean {
+  return /imdb\.com\/user\/p\.[a-z0-9]{8,}/i.test(input.trim());
+}
+
+/**
  * Accepts a full URL, a bare id, or a profile URL:
  *   https://www.imdb.com/list/ls024149810/
  *   https://www.imdb.com/user/ur12345678/watchlist
  *   ls024149810  ·  ur12345678
+ *
+ * A watchlist's own `ls` id works as well as its owner's `ur` id — both reach
+ * the same list, which is why the `ls` branch is tried first and nothing here
+ * needs to know a watchlist from a saved list.
  */
 export function parseImdbRef(input: string): ImdbRef | null {
   const raw = input.trim();
