@@ -44,6 +44,13 @@ export interface TmdbListItem {
   credit_id?: string;
 }
 
+interface TmdbPoster {
+  iso_639_1: string | null;
+  file_path: string;
+  vote_average: number;
+  vote_count?: number;
+}
+
 interface TmdbDetail {
   runtime?: number;
   /** Series only. The people who actually created the show. */
@@ -64,7 +71,7 @@ interface TmdbDetail {
     cast?: { id?: number; name?: string; character?: string; profile_path?: string | null }[];
   };
   videos?: { results?: { site?: string; type?: string; key?: string }[] };
-  images?: { posters?: { iso_639_1: string | null; file_path: string; vote_average: number }[] };
+  images?: { posters?: TmdbPoster[] };
   external_ids?: { imdb_id?: string | null };
 }
 
@@ -304,12 +311,8 @@ async function enrich(raw: TmdbListItem, kind: MediaKind): Promise<MediaItem> {
     const mins = detail.runtime ?? detail.episode_run_time?.[0];
     if (mins) item.runtime = `${mins} min`;
 
-    // Prefer the best-voted textless poster — that's the look the design wants.
-    const textless = (detail.images?.posters ?? []).filter((p) => p.iso_639_1 === null);
-    if (textless.length) {
-      textless.sort((a, b) => b.vote_average - a.vote_average);
-      item.poster = `${IMG}/w500${textless[0].file_path}`;
-    }
+    const alt = pickCommunityPoster(detail.images?.posters, raw.poster_path);
+    if (alt) item.poster = `${IMG}/w500${alt}`;
 
     const imdbId = detail.external_ids?.imdb_id;
     if (imdbId) {
@@ -323,6 +326,107 @@ async function enrich(raw: TmdbListItem, kind: MediaKind): Promise<MediaItem> {
   }
 
   return item;
+}
+
+/* ------------------------------------------------------------------ *
+ * Artwork
+ * ------------------------------------------------------------------ */
+
+/**
+ * Picks the community poster to show instead of the official key art.
+ *
+ * Every image in TMDB's `posters` array was uploaded and voted on by its
+ * contributors, and `poster_path` is only the one that happens to be ranked
+ * first — which is nearly always the distributor's own theatrical one-sheet.
+ * Using it means the app looks like every other TMDB front end.
+ *
+ * The ordering is deliberate:
+ *
+ *  1. Textless art first. No burnt-in title means nothing fights the title
+ *     the layout already prints next to it, and no wrong-language wordmark
+ *     turns up on a rail.
+ *  2. Then by vote average, with vote count breaking ties — a 10.0 from one
+ *     voter is not better than an 8.4 from ninety, and without the tiebreak
+ *     the single-vote uploads won every time.
+ *  3. The default is dropped from the running, since matching it defeats the
+ *     purpose. If that leaves nothing, the caller keeps what it had; a
+ *     recognisable official poster beats no poster.
+ */
+export function pickCommunityPoster(
+  posters: TmdbPoster[] | undefined,
+  defaultPath?: string | null,
+): string | undefined {
+  const candidates = (posters ?? []).filter((p) => p.file_path && p.file_path !== defaultPath);
+  if (!candidates.length) return undefined;
+
+  const rank = (p: TmdbPoster) => [
+    p.iso_639_1 === null ? 1 : 0,
+    p.vote_average ?? 0,
+    p.vote_count ?? 0,
+  ];
+
+  const best = candidates.reduce((a, b) => {
+    const [ta, va, ca] = rank(a);
+    const [tb, vb, cb] = rank(b);
+    if (ta !== tb) return ta > tb ? a : b;
+    if (va !== vb) return va > vb ? a : b;
+    return ca >= cb ? a : b;
+  });
+
+  return best.file_path;
+}
+
+/** Runs `task` over `items` with at most `limit` in flight. */
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const i = cursor++;
+      out[i] = await task(items[i]);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+/**
+ * Swaps in community artwork for items that arrived with someone else's.
+ *
+ * Rails built by `curate` already get this inside `enrich`. The Discover tab
+ * does not: it is served from Cinemeta, whose posters come from metahub — one
+ * fixed image per IMDb id, the same one every Stremio install shows. That is
+ * the most generic art in the app on the most visited tab.
+ *
+ * Two requests per title, so it is only worth doing on the routes Next
+ * revalidates on a timer; on a per-request path it would be paid by whoever
+ * loaded the page. Every failure keeps the poster the item came in with —
+ * this route is prerendered, and artwork is never worth failing a build over.
+ */
+export async function withCommunityPosters(items: MediaItem[]): Promise<MediaItem[]> {
+  return mapLimit(items, 8, async (item) => {
+    if (!item.imdbId) return item;
+    try {
+      const found = await findByImdbId(item.imdbId);
+      if (!found) return item;
+
+      const endpoint = found.kind === "movie" ? "movie" : "tv";
+      const data = await tmdb<{ posters?: TmdbPoster[] }>(
+        `/${endpoint}/${found.tmdbId}/images`,
+        { include_image_language: "null,en" },
+        86400,
+      );
+
+      const path = pickCommunityPoster(data.posters);
+      return path ? { ...item, poster: `${IMG}/w500${path}` } : item;
+    } catch {
+      return item;
+    }
+  });
 }
 
 /* ------------------------------------------------------------------ *

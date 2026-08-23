@@ -1,5 +1,5 @@
 import { fetchTopCatalog } from "@/lib/cinemeta";
-import { posterWall } from "@/lib/tmdb";
+import { posterWall, withCommunityPosters } from "@/lib/tmdb";
 import type { MediaItem } from "@/lib/types";
 import type { DiscoverPayload } from "@cinesync/shared/payloads";
 
@@ -41,11 +41,27 @@ export async function GET() {
     if (series[i]) hero.push(series[i]);
   }
 
+  /*
+     Community artwork for the three things a visitor actually looks at.
+
+     Cinemeta hands back metahub posters — one fixed image per IMDb id, the
+     same one inside every Stremio install — so without this the landing tab is
+     the most generically illustrated part of the app. `withCommunityPosters`
+     swallows its own failures per title, and the wall is deliberately left on
+     metahub: it is 180 blurred tiles behind a scrim, and upgrading it would
+     cost 360 requests to change something nobody can resolve.
+  */
+  const [heroArt, movieArt, seriesArt] = await Promise.all([
+    withCommunityPosters(hero.filter((h) => h.backdrop || h.poster).slice(0, 6)),
+    withCommunityPosters(movies.slice(0, 18)),
+    withCommunityPosters(series.slice(0, 18)),
+  ]);
+
   const payload: DiscoverPayload = {
-    hero: hero.filter((h) => h.backdrop || h.poster).slice(0, 6),
+    hero: heroArt,
     rails: [
-      { title: "Most Watched Movies", items: movies.slice(0, 18) },
-      { title: "Most Watched Series", items: series.slice(0, 18) },
+      { title: "Most Watched Movies", items: movieArt },
+      { title: "Most Watched Series", items: seriesArt },
     ],
     wall: buildWall(movies, series, tmdbMovies, tmdbSeries),
   };
