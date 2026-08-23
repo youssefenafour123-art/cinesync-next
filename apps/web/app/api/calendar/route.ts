@@ -1,5 +1,6 @@
 import { CATALOGUE_CACHE } from "@/lib/httpCache";
 import { currentMonth, fetchCalendar, isValidMonth } from "@/lib/calendar";
+import { withCommunityPosters } from "@/lib/tmdb";
 import type { CalendarPayload } from "@cinesync/shared/payloads";
 
 export const revalidate = 3600;
@@ -17,7 +18,16 @@ export async function GET(req: Request) {
   const month = isValidMonth(requested) ? requested : currentMonth();
 
   try {
-    const entries = await fetchCalendar(month);
+    /*
+       Community artwork here too, so a title looks the same on the calendar as
+       it does on the rail that sent you there. `fetchCalendar` builds from
+       TMDB's `poster_path`, which is the official sheet by definition.
+
+       Affordable because the lookups are memoised by tmdbId and a month's
+       entries repeat: a series appears once per air date, so a show with eight
+       episodes in the month costs one request, not eight.
+    */
+    const entries = await withCommunityPosters(await fetchCalendar(month));
     return Response.json({ month, entries } satisfies CalendarPayload, {
       headers: CATALOGUE_CACHE,
     });
