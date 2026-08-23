@@ -62,6 +62,7 @@ interface AppState {
   libraryLoaded: boolean;
   setLibrary: (snapshot: LibrarySnapshot) => void;
   markInLibrary: (id: string) => void;
+  unmarkInLibrary: (id: string) => void;
 
   toast: string | null;
   showToast: (message: string) => void;
@@ -111,6 +112,20 @@ export const useAppStore = create<AppState>((set) => ({
       const knownLibraryIds = new Set(s.knownLibraryIds);
       knownLibraryIds.add(id);
       return { libraryIds, knownLibraryIds };
+    }),
+  /*
+     Drops the badge but deliberately leaves `knownLibraryIds` alone.
+
+     Removing here is the same soft delete Stremio performs, so the row still
+     exists remotely and a re-read would still report it. Keeping the id in
+     `known` is also what stops the next sync treating it as missing and
+     writing it straight back from whichever IMDb list it came from.
+  */
+  unmarkInLibrary: (id) =>
+    set((s) => {
+      const libraryIds = new Set(s.libraryIds);
+      libraryIds.delete(id);
+      return { libraryIds };
     }),
 
   toast: null,

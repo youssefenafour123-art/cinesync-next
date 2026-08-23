@@ -6,6 +6,7 @@ import { useSourcesStore } from "@/store/useSourcesStore";
 import { useAppStore } from "@/store/useAppStore";
 import { useSync } from "@/lib/useSync";
 import { useLibraryRefresh } from "@/lib/useLibrarySync";
+import { useLibraryActions } from "@/lib/useLibraryActions";
 import { metahubPoster } from "@/lib/stremio";
 import { Icon } from "@/components/ui/Icon";
 import { PosterImage } from "@/components/ui/PosterImage";
@@ -21,6 +22,7 @@ export function LibraryTab() {
   const libraryLoaded = useAppStore((s) => s.libraryLoaded);
   const { state, start, cancel, running } = useSync();
   const { refresh, pending: refreshing, connected } = useLibraryRefresh();
+  const { remove, removing } = useLibraryActions();
 
   const showProgress = state.phase !== "idle";
 
@@ -217,10 +219,26 @@ export function LibraryTab() {
                   alt={h.title}
                   className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                 />
-                <div className="poster-overlay absolute inset-0 flex flex-col justify-end p-3 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                <div className="poster-overlay absolute inset-0 flex flex-col justify-end p-3 opacity-0 transition-opacity duration-300 group-hover:opacity-100 focus-within:opacity-100">
                   <h4 className="truncate font-title-lg text-[15px] text-on-surface">{h.title}</h4>
                   <p className="font-label-md text-[12px] text-primary">{relativeTime(h.timestamp)}</p>
                 </div>
+                {/*
+                   Removing from the shelf you are looking at, rather than
+                   having to open the title first. It stays hidden until the
+                   tile is hovered or the button itself is focused, so a grid
+                   of posters isn't a grid of delete buttons.
+                */}
+                <button
+                  type="button"
+                  onClick={() => void remove({ imdbId: h.id, title: h.title, kind: h.type })}
+                  disabled={removing}
+                  aria-label={`Remove ${h.title} from your Stremio library`}
+                  title={`Remove ${h.title} from your Stremio library`}
+                  className="absolute right-2 top-2 rounded-full bg-black/70 p-2 text-white opacity-0 backdrop-blur-md transition-all duration-200 hover:bg-error hover:text-on-error focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+                >
+                  <Icon name="delete" className="text-[18px]" />
+                </button>
               </motion.div>
             ))}
           </div>

@@ -123,7 +123,13 @@ export async function fetchLibrarySnapshot(authKey: string): Promise<LibrarySnap
  * Library item payload. Field-for-field the shape the legacy app used
  * (index.html:4326) — Stremio is picky about this, so it is not "tidied up".
  */
-function libraryItem(id: string, name: string, type: MediaKind, poster: string) {
+function libraryItem(
+  id: string,
+  name: string,
+  type: MediaKind,
+  poster: string,
+  removed = false,
+) {
   const nowIso = new Date().toISOString();
   return {
     _id: id,
@@ -131,7 +137,7 @@ function libraryItem(id: string, name: string, type: MediaKind, poster: string) 
     type,
     poster,
     posterShape: "poster",
-    removed: false,
+    removed,
     temp: false,
     _ctime: nowIso,
     _mtime: nowIso,
@@ -193,6 +199,59 @@ export async function addToLibrary(
 
   for (const authKey of authKeys) {
     try {
+      const data = await call<StremioError>("datastorePut", {
+        authKey,
+        collection: "libraryItem",
+        changes: [payload],
+      });
+      if (data.error) failed++;
+      else ok++;
+    } catch {
+      failed++;
+    }
+  }
+
+  return { ok, failed };
+}
+
+/**
+ * Removes a title from every connected account, the way Stremio itself does.
+ *
+ * There is no delete in this API. Stremio removes a title by writing the same
+ * row back with `removed: true` — see `fetchLibrarySnapshot` — so that is what
+ * this does, and it is why a removal here shows up in the app rather than
+ * being quietly undone by the next sync from another device.
+ *
+ * The existing row is read first so the flag is flipped on the real thing.
+ * `state` carries watch progress, `timesWatched` and `lastWatched`; writing a
+ * freshly built row instead would silently reset all of it, so a title removed
+ * from a shelf and later re-added would come back claiming it had never been
+ * played. The synthesized row is only the fallback for a row we couldn't read.
+ */
+export async function removeFromLibrary(
+  item: { imdbId?: string; title: string; kind: MediaKind; poster?: string },
+  authKeys: string[],
+): Promise<{ ok: number; failed: number }> {
+  const id = item.imdbId;
+  if (!id) {
+    throw new Error("This title has no IMDb ID, so it was never in a Stremio library.");
+  }
+
+  let ok = 0;
+  let failed = 0;
+
+  for (const authKey of authKeys) {
+    try {
+      const existing = await call<{ result?: Record<string, unknown>[] } & StremioError>(
+        "datastoreGet",
+        { authKey, collection: "libraryItem", ids: [id], all: false },
+      );
+
+      const row = existing.result?.[0];
+      const payload = row
+        ? { ...row, removed: true, _mtime: new Date().toISOString() }
+        : libraryItem(id, item.title, item.kind, item.poster || metahubPoster(id), true);
+
       const data = await call<StremioError>("datastorePut", {
         authKey,
         collection: "libraryItem",

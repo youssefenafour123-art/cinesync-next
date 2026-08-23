@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { MediaItem } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
-import { useAddToLibrary } from "@/lib/useAddToLibrary";
+import { useLibraryActions } from "@/lib/useLibraryActions";
 import { useTrailer } from "@/lib/useTrailer";
 import { useReducedMotion } from "@/lib/useReducedMotion";
 import { PosterImage } from "./PosterImage";
@@ -56,7 +56,7 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
   const openDetails = useAppStore((s) => s.openDetails);
   const inLibrary = useAppStore((s) => s.libraryIds);
   const { play } = useTrailer();
-  const { add, pending } = useAddToLibrary();
+  const { add, adding } = useLibraryActions();
   const reduced = useReducedMotion();
 
   const count = items.length;
@@ -251,13 +251,13 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
                 ) : (
                   <button
                     type="button"
-                    disabled={pending}
+                    disabled={adding}
                     onClick={() => add(item)}
                     className="flex items-center gap-2 rounded-full border border-white/10 bg-surface-container/30 px-7 py-3 font-title-lg text-title-lg text-white backdrop-blur-md transition-all duration-300 hover:scale-105 hover:bg-white/10 disabled:opacity-60"
                   >
                     <Icon
-                      name={pending ? "progress_activity" : "add"}
-                      className={pending ? "animate-spin" : ""}
+                      name={adding ? "progress_activity" : "add"}
+                      className={adding ? "animate-spin" : ""}
                     />
                     Add to Library
                   </button>

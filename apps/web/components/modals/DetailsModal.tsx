@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { CreditedPerson, MediaItem } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
-import { useAddToLibrary } from "@/lib/useAddToLibrary";
+import { useLibraryActions } from "@/lib/useLibraryActions";
 import { useTrailer } from "@/lib/useTrailer";
 import { PosterImage } from "@/components/ui/PosterImage";
 import { ScoresPanel } from "@/components/ui/ScoresPanel";
@@ -43,7 +43,7 @@ function sameCredit(a?: string, b?: string): boolean {
 export function DetailsModal({ item }: { item: MediaItem }) {
   const close = useAppStore((s) => s.closeDetails);
   const inLibrary = useAppStore((s) => (item.imdbId ? s.libraryIds.has(item.imdbId) : false));
-  const { add, pending } = useAddToLibrary();
+  const { add, remove, adding, removing } = useLibraryActions();
   const { play } = useTrailer();
 
   // List endpoints carry no plot/genres/credits for some titles. Cinemeta
@@ -134,9 +134,11 @@ export function DetailsModal({ item }: { item: MediaItem }) {
           <ActionButtons
             item={full}
             inLibrary={inLibrary}
-            pending={pending}
+            adding={adding}
+            removing={removing}
             onPlay={() => play(full)}
             onAdd={() => add(full)}
+            onRemove={() => remove(full)}
           />
         </div>
       </div>
@@ -263,9 +265,11 @@ export function DetailsModal({ item }: { item: MediaItem }) {
           <ActionButtons
             item={full}
             inLibrary={inLibrary}
-            pending={pending}
+            adding={adding}
+            removing={removing}
             onPlay={() => play(full)}
             onAdd={() => add(full)}
+            onRemove={() => remove(full)}
           />
         </div>
 
@@ -368,15 +372,19 @@ function CreditChips({
 function ActionButtons({
   item,
   inLibrary,
-  pending,
+  adding,
+  removing,
   onPlay,
   onAdd,
+  onRemove,
 }: {
   item: MediaItem;
   inLibrary: boolean;
-  pending: boolean;
+  adding: boolean;
+  removing: boolean;
   onPlay: () => void;
   onAdd: () => void;
+  onRemove: () => void;
 }) {
   return (
     <>
@@ -390,20 +398,45 @@ function ActionButtons({
       </button>
 
       {inLibrary ? (
-        <div className="flex w-full cursor-default items-center justify-center gap-2 rounded-full border border-primary/30 bg-surface-variant/50 py-3 font-label-md text-label-md text-primary">
-          <Icon name="check" />
-          In Library
-        </div>
+        /*
+           The added state is itself the remove control, rather than a second
+           button sitting beside it — the same swap Stremio and Netflix use.
+           `group` drives it: at rest it reads as a status chip in the primary
+           colour, and only on hover or keyboard focus does it turn into a
+           destructive action, so nothing about the resting state invites the
+           click that removes a title.
+        */
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={removing}
+          title={`Remove “${item.title}” from your Stremio library`}
+          className="group flex w-full items-center justify-center gap-2 rounded-full border border-primary/30 bg-surface-variant/50 py-3 font-label-md text-label-md text-primary transition-colors hover:border-error/40 hover:bg-error/10 hover:text-error focus-visible:border-error/40 focus-visible:bg-error/10 focus-visible:text-error disabled:opacity-60"
+        >
+          <Icon
+            name={removing ? "progress_activity" : "check"}
+            className={removing ? "animate-spin" : "group-hover:hidden group-focus-visible:hidden"}
+          />
+          {!removing ? (
+            <Icon name="delete" className="hidden group-hover:inline group-focus-visible:inline" />
+          ) : null}
+          <span className={removing ? "" : "group-hover:hidden group-focus-visible:hidden"}>
+            {removing ? "Removing…" : "In Library"}
+          </span>
+          {!removing ? (
+            <span className="hidden group-hover:inline group-focus-visible:inline">Remove</span>
+          ) : null}
+        </button>
       ) : (
         <button
           type="button"
           onClick={onAdd}
-          disabled={pending || !item.imdbId}
+          disabled={adding || !item.imdbId}
           title={item.imdbId ? undefined : "Stremio needs an IMDb ID for this title"}
           className="flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-surface-variant py-3 font-label-md text-label-md text-white transition-colors hover:bg-surface-variant/80 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <Icon name={pending ? "progress_activity" : "add"} className={pending ? "animate-spin" : ""} />
-          {pending ? "Adding…" : "Add to Library"}
+          <Icon name={adding ? "progress_activity" : "add"} className={adding ? "animate-spin" : ""} />
+          {adding ? "Adding…" : "Add to Library"}
         </button>
       )}
     </>
