@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { LibrarySnapshot } from "@/lib/stremio";
+import type { LibrarySnapshot, WatchedTitle } from "@/lib/stremio";
 import type { MediaItem } from "@/lib/types";
 
 /**
@@ -67,6 +67,12 @@ interface AppState {
   knownLibraryIds: Set<string>;
   /** False until a library has actually been read, so an empty set can be told from an unread one. */
   libraryLoaded: boolean;
+  /**
+   * The last title played in any connected Stremio account, or null when
+   * nothing is connected and nothing has been played. Seeds the
+   * "Because you watched" rail on Discover.
+   */
+  lastWatched: WatchedTitle | null;
   setLibrary: (snapshot: LibrarySnapshot) => void;
   markInLibrary: (id: string) => void;
   unmarkInLibrary: (id: string) => void;
@@ -106,11 +112,13 @@ export const useAppStore = create<AppState>((set) => ({
   libraryIds: new Set<string>(),
   knownLibraryIds: new Set<string>(),
   libraryLoaded: false,
+  lastWatched: null,
   setLibrary: (snapshot) =>
     set({
       libraryIds: snapshot.inLibrary,
       knownLibraryIds: snapshot.known,
       libraryLoaded: true,
+      lastWatched: snapshot.lastWatched ?? null,
     }),
   markInLibrary: (id) =>
     set((s) => {

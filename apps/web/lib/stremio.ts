@@ -40,6 +40,22 @@ export async function login(email: string, password: string): Promise<string> {
 }
 
 /**
+ * The last title an account actually played.
+ *
+ * For a series this is the show, not the episode: Stremio keys the row by the
+ * series id and records which episode you were on in `state.video_id`, and
+ * "more like this" is a question about the show.
+ */
+export interface WatchedTitle {
+  imdbId: string;
+  title: string;
+  kind: MediaKind;
+  poster?: string;
+  /** `state.lastWatched` as a timestamp, so two accounts can be compared. */
+  watchedAt: number;
+}
+
+/**
  * A snapshot of one account's library.
  *
  * `inLibrary` is what the account actually holds right now; `known` is every
@@ -49,6 +65,8 @@ export async function login(email: string, password: string): Promise<string> {
 export interface LibrarySnapshot {
   inLibrary: Set<string>;
   known: Set<string>;
+  /** The most recently played row, if the account has ever played anything. */
+  lastWatched?: WatchedTitle;
 }
 
 export function emptySnapshot(): LibrarySnapshot {
@@ -60,13 +78,64 @@ export function mergeSnapshots(snapshots: LibrarySnapshot[]): LibrarySnapshot {
   for (const snap of snapshots) {
     for (const id of snap.inLibrary) merged.inLibrary.add(id);
     for (const id of snap.known) merged.known.add(id);
+    // Across several connected accounts, the genuinely most recent play wins.
+    if (snap.lastWatched && (!merged.lastWatched || snap.lastWatched.watchedAt > merged.lastWatched.watchedAt)) {
+      merged.lastWatched = snap.lastWatched;
+    }
   }
   return merged;
+}
+
+interface RemoteState {
+  lastWatched?: string | null;
+  timeOffset?: number;
+  timeWatched?: number;
+  overallTimeWatched?: number;
+  timesWatched?: number;
+  flaggedWatched?: number;
 }
 
 interface RemoteLibraryItem {
   _id?: string;
   removed?: boolean;
+  name?: string;
+  type?: string;
+  poster?: string;
+  state?: RemoteState;
+}
+
+/**
+ * Whether a row records a title someone actually played.
+ *
+ * `state.lastWatched` alone does not, and trusting it is how this feature gets
+ * silently wrong: `libraryItem()` below stamps `lastWatched` with the current
+ * time on every write, so adding a title from CineSync — or a bulk IMDb sync
+ * writing hundreds of them — would each claim to be the last thing watched.
+ * A real play always moves at least one of the counters.
+ */
+function watchedFrom(row: RemoteLibraryItem): WatchedTitle | null {
+  const id = row._id;
+  const state = row.state;
+  if (!state || typeof id !== 'string' || !/^tt\d+$/.test(id)) return null;
+
+  const played =
+    (state.timeOffset ?? 0) > 0 ||
+    (state.timeWatched ?? 0) > 0 ||
+    (state.overallTimeWatched ?? 0) > 0 ||
+    (state.timesWatched ?? 0) > 0 ||
+    (state.flaggedWatched ?? 0) > 0;
+  if (!played) return null;
+
+  const watchedAt = state.lastWatched ? Date.parse(state.lastWatched) : NaN;
+  if (!Number.isFinite(watchedAt) || watchedAt <= 0) return null;
+
+  return {
+    imdbId: id,
+    title: row.name || id,
+    kind: row.type === 'series' ? 'series' : 'movie',
+    poster: row.poster || undefined,
+    watchedAt,
+  };
 }
 
 /**
@@ -109,6 +178,17 @@ export async function fetchLibrarySnapshot(authKey: string): Promise<LibrarySnap
       // carry `removed: true` until the title is explicitly added, so the
       // `removed` check covers them on its own.
       if (row.removed !== true) snapshot.inLibrary.add(id);
+
+      /*
+         Watch state, read from the same rows rather than a second request.
+         A title played but never added is a `temp` row — `removed: true` — so
+         this deliberately runs *outside* the `removed` check above: the last
+         thing you watched usually isn't in your library at all.
+      */
+      const watched = watchedFrom(row);
+      if (watched && (!snapshot.lastWatched || watched.watchedAt > snapshot.lastWatched.watchedAt)) {
+        snapshot.lastWatched = watched;
+      }
     }
     return snapshot;
   } catch {

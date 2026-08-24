@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import type { Person, PersonCredit } from "@/lib/types";
 import { useFetch } from "@/lib/useFetch";
@@ -12,11 +12,47 @@ import { ModalShell } from "./ModalShell";
 
 type Panel = "known" | "upcoming" | "filmography";
 
+/** The filmography filter. "all" is the default and keeps the old behaviour. */
+type KindFilter = "all" | "movie" | "series";
+
+const KIND_LABELS: Record<KindFilter, string> = {
+  all: "All",
+  movie: "Movies",
+  series: "TV Shows",
+};
+
 /** Person profile: bio, career summary, upcoming work and full filmography. */
 export function PersonModal({ id }: { id: number }) {
   const close = useAppStore((s) => s.closePerson);
   const { data, loading, error, reload } = useFetch<Person>(`/api/person/${id}`);
   const [panel, setPanel] = useState<Panel>("known");
+  const [kind, setKind] = useState<KindFilter>("all");
+
+  /*
+     A profile opened from another profile's credits reuses this component
+     rather than remounting it — `openPerson` only swaps the id — so without
+     this, arriving at a new person would inherit the previous one's panel and
+     filter, and could land on an empty grid.
+  */
+  useEffect(() => {
+    setPanel("known");
+    setKind("all");
+  }, [id]);
+
+  const filmography = data?.filmography;
+  const counts = useMemo(() => {
+    const credits = filmography ?? [];
+    return {
+      all: credits.length,
+      movie: credits.filter((c) => c.kind === "movie").length,
+      series: credits.filter((c) => c.kind === "series").length,
+    };
+  }, [filmography]);
+
+  // Nothing to filter when the whole career is one kind — a film-only director
+  // should not be offered a TV Shows chip that leads somewhere empty.
+  const showKindFilter = counts.movie > 0 && counts.series > 0;
+  const activeKind = showKindFilter ? kind : "all";
 
   return (
     <ModalShell
@@ -46,13 +82,25 @@ export function PersonModal({ id }: { id: number }) {
             </Tab>
           </div>
 
+          {panel === "filmography" && showKindFilter ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {(["all", "movie", "series"] as const).map((k) => (
+                <Chip key={k} on={activeKind === k} onClick={() => setKind(k)} count={counts[k]}>
+                  {KIND_LABELS[k]}
+                </Chip>
+              ))}
+            </div>
+          ) : null}
+
           <CreditGrid
             credits={
               panel === "known"
                 ? data.knownFor
                 : panel === "upcoming"
                   ? data.upcoming
-                  : data.filmography
+                  : activeKind === "all"
+                    ? data.filmography
+                    : data.filmography.filter((c) => c.kind === activeKind)
             }
             emptyMessage={
               panel === "upcoming"
@@ -150,6 +198,35 @@ function Biography({ text }: { text: string }) {
   );
 }
 
+/** The one chip, so the panel row and the kind row cannot drift apart. */
+function Chip({
+  on,
+  onClick,
+  count,
+  children,
+}: {
+  on: boolean;
+  onClick: () => void;
+  count: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      className={`rounded-full px-4 py-2 font-label-md text-label-md transition-colors ${
+        on
+          ? "bg-primary text-on-primary"
+          : "border border-white/10 text-on-surface-variant hover:text-on-surface"
+      }`}
+    >
+      {children}
+      <span className={on ? "ml-1.5 opacity-70" : "ml-1.5 opacity-50"}>{count}</span>
+    </button>
+  );
+}
+
 function Tab({
   id,
   active,
@@ -163,21 +240,10 @@ function Tab({
   count: number;
   children: React.ReactNode;
 }) {
-  const on = active === id;
   return (
-    <button
-      type="button"
-      onClick={() => set(id)}
-      aria-pressed={on}
-      className={`rounded-full px-4 py-2 font-label-md text-label-md transition-colors ${
-        on
-          ? "bg-primary text-on-primary"
-          : "border border-white/10 text-on-surface-variant hover:text-on-surface"
-      }`}
-    >
+    <Chip on={active === id} onClick={() => set(id)} count={count}>
       {children}
-      <span className={on ? "ml-1.5 opacity-70" : "ml-1.5 opacity-50"}>{count}</span>
-    </button>
+    </Chip>
   );
 }
 

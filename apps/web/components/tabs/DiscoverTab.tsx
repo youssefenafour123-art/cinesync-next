@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useEffect } from "react";
 import type { DiscoverPayload } from "@/app/api/discover/route";
 import { useFetch } from "@/lib/useFetch";
+import { BecauseYouWatched } from "@/components/ui/BecauseYouWatched";
 import { Carousel } from "@/components/ui/Carousel";
 import { HeroSlider } from "@/components/ui/HeroSlider";
 import { PosterCard } from "@/components/ui/PosterCard";
@@ -29,6 +30,14 @@ export function DiscoverTab({ onWall }: { onWall: (posters: string[]) => void })
       <HeroSlider items={data?.hero ?? []} />
 
       <div className="mx-auto mt-12 max-w-container-max px-margin-mobile md:px-margin-desktop">
+        {/*
+           Above the catalogue rails on purpose, and independent of them: it is
+           seeded from the connected Stremio library rather than from
+           `/api/discover`, so it neither waits for that payload nor blocks on
+           it, and it renders nothing at all when there is nothing to say.
+        */}
+        <BecauseYouWatched />
+
         {loading && !data ? (
           <Carousel title="Most Watched Movies" showArrows={false}>
             <PosterSkeleton />

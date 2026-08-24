@@ -15,6 +15,7 @@
 import type {
   CalendarEntry,
   MediaItem,
+  MediaKind,
   Rail,
   SyncItem,
 } from "./types";
@@ -87,6 +88,28 @@ export interface CalendarPayload {
   /** `YYYY-MM` the entries belong to, echoed so the client can confirm. */
   month: string;
   entries: CalendarEntry[];
+}
+
+/** `GET /api/similar?imdb=tt…` */
+export interface SimilarPayload {
+  /**
+   * The title the recommendations were drawn from, resolved on TMDB. Null when
+   * TMDB has never heard of that IMDb id — which is an empty rail, not an
+   * error, so the client can simply render nothing.
+   */
+  seed: {
+    imdbId: string;
+    tmdbId: number;
+    kind: MediaKind;
+    title: string;
+    poster?: string;
+  } | null;
+  /**
+   * More than the rail shows. The client drops whatever is already in the
+   * viewer's library before cutting the list down, and that filter cannot run
+   * here — the library lives in the browser.
+   */
+  items: MediaItem[];
 }
 
 /** `GET /api/imdb-list?url=` */

@@ -55,6 +55,8 @@ export const endpoints = {
     apiUrl("/api/enrich", params),
   meta: (type: string, id: string) =>
     apiUrl(`/api/meta/${encodeURIComponent(type)}/${encodeURIComponent(id)}`),
+  /** "More like this", from the IMDb id of something already watched. */
+  similar: (imdb: string) => apiUrl("/api/similar", { imdb }),
   imdbList: (url: string) => apiUrl("/api/imdb-list", { url }),
   stremio: (method: string) => apiUrl(`/api/stremio/${method}`),
 } as const;

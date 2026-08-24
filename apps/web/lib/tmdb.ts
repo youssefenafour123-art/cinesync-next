@@ -862,6 +862,85 @@ async function curate(
     .map((r) => r.item);
 }
 
+export interface RecommendationSeed {
+  imdbId: string;
+  tmdbId: number;
+  kind: MediaKind;
+  title: string;
+  poster?: string;
+}
+
+/**
+ * "More like this", from one title someone actually watched.
+ *
+ * Two TMDB endpoints, in that order and for different reasons.
+ * `/recommendations` is TMDB's own behavioural signal — what people who
+ * watched this went on to watch — and it is the one worth showing. `/similar`
+ * is genre-and-keyword overlap, which for a well-known title is noticeably
+ * worse: it answers "shares tags with" rather than "you would like". So
+ * `/similar` is only ever a top-up, for a seed thin enough that
+ * recommendations alone can't fill a rail.
+ *
+ * Ranking is the same weighted rating the curated rails use, so a five-vote
+ * 10/10 cannot lead the row. The caller asks for more than it shows: the
+ * client drops anything already in the viewer's library, and a rail that came
+ * back exactly five long would go short every time.
+ */
+export async function recommendationsFor(
+  imdbId: string,
+  limit = 10,
+): Promise<{ seed: RecommendationSeed | null; items: MediaItem[] }> {
+  const found = await findByImdbId(imdbId);
+  if (!found) return { seed: null, items: [] };
+
+  const { tmdbId, kind } = found;
+  const endpoint = kind === "movie" ? "movie" : "tv";
+
+  // The seed's own record, for the rail's heading. Cheap — one cached call.
+  const detail = await tmdb<TmdbListItem>(`/${endpoint}/${tmdbId}`, {}, 86400).catch(() => null);
+  const seed: RecommendationSeed = {
+    imdbId,
+    tmdbId,
+    kind,
+    title: detail?.title || detail?.name || "",
+    poster: detail?.poster_path ? `${IMG}/w342${detail.poster_path}` : undefined,
+  };
+
+  const [recommended, similar] = await Promise.all([
+    tmdb<{ results?: TmdbListItem[] }>(`/${endpoint}/${tmdbId}/recommendations`, {}, 86400)
+      .then((d) => d.results ?? [])
+      .catch(() => [] as TmdbListItem[]),
+    tmdb<{ results?: TmdbListItem[] }>(`/${endpoint}/${tmdbId}/similar`, {}, 86400)
+      .then((d) => d.results ?? [])
+      .catch(() => [] as TmdbListItem[]),
+  ]);
+
+  const seen = new Set<number>([tmdbId]);
+  const pool: TmdbListItem[] = [];
+  for (const raw of [...recommended, ...similar]) {
+    if (!raw.id || seen.has(raw.id)) continue;
+    if (!raw.poster_path || !raw.overview) continue;
+    // A floor low enough to keep genuinely obscure neighbours, high enough
+    // that the rail isn't padded with titles nobody has rated.
+    if ((raw.vote_count ?? 0) < 50) continue;
+    seen.add(raw.id);
+    pool.push(raw);
+  }
+  if (!pool.length) return { seed, items: [] };
+
+  const mean = pool.reduce((sum, r) => sum + (r.vote_average ?? 0), 0) / pool.length;
+  const shortlist = pool
+    .map((raw) => ({
+      raw,
+      score: weightedRating(raw.vote_average ?? 0, raw.vote_count ?? 0, mean, 300),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  const items = await Promise.all(shortlist.map((r) => enrich(r.raw, kind)));
+  return { seed, items };
+}
+
 /** Full enrichment for a known TMDB id — used by the details modal. */
 export async function enrichById(tmdbId: number, kind: MediaKind): Promise<MediaItem | null> {
   const endpoint = kind === "movie" ? "movie" : "tv";
@@ -1107,8 +1186,19 @@ export async function fetchPerson(id: number): Promise<Person | null> {
     profile: raw.profile_path ? `${IMG}/w342${raw.profile_path}` : undefined,
     imdbId: raw.external_ids?.imdb_id || undefined,
     knownFor,
-    upcoming: future.filter((c) => c.poster).slice(0, 12),
-    filmography: released.filter((c) => c.poster).slice(0, 40),
+    /*
+       Both caps are deliberately generous, because the client splits these
+       lists by kind and the cut happens here, before that split.
+
+       At the old 40 the filmography was the 40 most recent credits of a mixed
+       career — so a "Movies" filter on someone with a long television run
+       showed three films and looked broken, when the rest had simply been
+       thrown away server-side. TMDB returns every credit in the single
+       `combined_credits` call above, so widening this costs payload and not
+       one extra request.
+    */
+    upcoming: future.filter((c) => c.poster).slice(0, 24),
+    filmography: released.filter((c) => c.poster).slice(0, 120),
   };
 }
 
@@ -1271,6 +1361,154 @@ export const MOODS: Mood[] = [
        things that are not horror.
     */
     tv: null,
+  },
+
+  /* ---- Genres ---------------------------------------------------------- *
+     Broad catalogues, so the vote floors are high: the point of a genre chip
+     here is the good ones, not the many. TMDB's two vocabularies diverge most
+     at this end — see `Mood.tv`.
+   * ---------------------------------------------------------------------- */
+  {
+    id: "action",
+    label: "Action & Spectacle",
+    blurb: "Staged, shot and cut by people who knew what they were doing.",
+    params: { with_genres: "28", "vote_count.gte": "1200" },
+    // Television has no Action genre; 10759 is Action & Adventure, the nearest.
+    tv: { params: { with_genres: "10759", "vote_count.gte": "300" }, minVotes: 450 },
+  },
+  {
+    id: "comedy",
+    label: "Comedy",
+    blurb: "Funny on purpose, and still funny now.",
+    params: { with_genres: "35", "vote_count.gte": "1000" },
+    tv: { params: { with_genres: "35", "vote_count.gte": "250" }, minVotes: 400 },
+  },
+  {
+    id: "romance",
+    label: "Romance",
+    blurb: "Two people, and whatever is standing between them.",
+    params: { with_genres: "10749", "vote_count.gte": "1000" },
+    /*
+       TMDB has no Romance genre for television — 10749 is film-only, and the
+       TV list has nothing standing in for it. The keyword does carry over, but
+       it reaches a long tail of very thinly voted series, so the floor here is
+       far higher than the usual TV one.
+    */
+    tv: { params: { with_keywords: "9840", "vote_count.gte": "300" }, minVotes: 450 },
+  },
+  {
+    id: "fantasy",
+    label: "Fantasy",
+    blurb: "Worlds with their own rules, kept consistently.",
+    params: { with_genres: "14", "vote_count.gte": "800" },
+    /*
+       Film only. Television folds fantasy into Sci-Fi & Fantasy (10765), which
+       is exactly what the Science Fiction chip already selects on this side —
+       offering both would be two chips over one rail.
+    */
+    tv: null,
+  },
+  {
+    id: "mystery",
+    label: "Mystery & Detection",
+    blurb: "A question worth the running time it takes to answer.",
+    params: { with_genres: "9648", "vote_count.gte": "600" },
+    tv: { params: { with_genres: "9648", "vote_count.gte": "200" }, minVotes: 350 },
+  },
+  {
+    id: "war",
+    label: "War & Conflict",
+    blurb: "What it costs, told without a recruiting poster.",
+    params: { with_genres: "10752", "vote_count.gte": "500" },
+    // 10768 is War & Politics — broader than the film genre, and the only one.
+    tv: { params: { with_genres: "10768", "vote_count.gte": "150" }, minVotes: 250 },
+  },
+  {
+    id: "western",
+    label: "Westerns",
+    blurb: "Frontier, horizon, and somebody who won't move.",
+    params: { with_genres: "37", "vote_count.gte": "300" },
+    tv: { params: { with_genres: "37", "vote_count.gte": "50" }, minVotes: 120 },
+  },
+  {
+    id: "animation",
+    label: "Animation",
+    blurb: "Drawn, modelled and stop-motion — not only for children.",
+    params: { with_genres: "16", "vote_count.gte": "800" },
+    tv: { params: { with_genres: "16", "vote_count.gte": "200" }, minVotes: 350 },
+  },
+  {
+    id: "family",
+    label: "Family",
+    blurb: "Holds a room of different ages at once.",
+    params: { with_genres: "10751", "vote_count.gte": "800" },
+    tv: { params: { with_genres: "10751", "vote_count.gte": "200" }, minVotes: 350 },
+  },
+  {
+    id: "documentary",
+    label: "Documentary",
+    blurb: "True, and made with the care fiction usually gets.",
+    // Documentaries collect an order of magnitude fewer votes than features,
+    // so this floor is low by design rather than by oversight.
+    params: { with_genres: "99", "vote_count.gte": "200" },
+    minVotes: 300,
+    tv: { params: { with_genres: "99", "vote_count.gte": "50" }, minVotes: 100 },
+  },
+
+  /* ---- Keyword-led ----------------------------------------------------- *
+     Narrow ideas no genre expresses. Every id below was confirmed against
+     TMDB's /search/keyword, and the floors are low because the candidate pools
+     are small — a 700-vote bar would leave these rails three titles long.
+   * ---------------------------------------------------------------------- */
+  {
+    id: "political",
+    label: "Political Thrillers",
+    blurb: "Power, leverage, and who is really in the room.",
+    // 209817 is "political thriller". The broader "politics" (6078) was tried
+    // and rejected: it selects on subject matter, not on the kind of film.
+    params: { with_keywords: "209817", "vote_count.gte": "150" },
+    minVotes: 400,
+    tv: { params: { with_keywords: "209817", "vote_count.gte": "30" }, minVotes: 80 },
+  },
+  {
+    id: "spy",
+    label: "Spies & Espionage",
+    blurb: "Tradecraft, cover stories, and nobody saying what they mean.",
+    // Both ids: "spy" (470) is the popular framing, "espionage" (5265) the
+    // sober one, and neither alone covers the field.
+    params: { with_keywords: "470|5265", "vote_count.gte": "400" },
+    minVotes: 600,
+    /*
+       Animation excluded on the TV side only. The keyword is dominated there
+       by anime — Spy x Family and its neighbours outrank every live-action
+       series on rating, and this app has a whole Anime tab for them.
+    */
+    tv: { params: { with_keywords: "470|5265", "vote_count.gte": "60", without_genres: "16" }, minVotes: 120 },
+  },
+  {
+    id: "truestory",
+    label: "Based on a True Story",
+    blurb: "It happened. The film is the argument about how.",
+    params: { with_keywords: "9672", "vote_count.gte": "400" },
+    tv: { params: { with_keywords: "9672", "vote_count.gte": "80", without_genres: "16" }, minVotes: 150 },
+  },
+  {
+    id: "survival",
+    label: "Survival",
+    blurb: "Someone against the situation, with the clock running.",
+    params: { with_keywords: "10349", "vote_count.gte": "400" },
+    // Same anime problem as `spy` — see the note there.
+    tv: { params: { with_keywords: "10349", "vote_count.gte": "60", without_genres: "16" }, minVotes: 120 },
+  },
+  {
+    id: "courtroom",
+    label: "Courtroom",
+    blurb: "The case, the cross-examination, and the cost of winning.",
+    // "courtroom" (33519), "legal drama" (222517) and "legal thriller"
+    // (254459) — TMDB spreads the same idea across all three.
+    params: { with_keywords: "33519|222517|254459", "vote_count.gte": "250" },
+    minVotes: 400,
+    tv: { params: { with_keywords: "33519|222517|254459", "vote_count.gte": "50" }, minVotes: 100 },
   },
 ];
 
