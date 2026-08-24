@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import type { MoviesPayload } from "@/app/api/movies/route";
 import type { MoodPayload } from "@/app/api/mood/route";
@@ -104,7 +104,9 @@ export function MoviesTab() {
         ) : moodState.loading && !moodState.data ? (
           <LoadingState label="Finding the good ones…" />
         ) : moodState.data?.rail ? (
-          <RailGrid rail={moodState.data.rail} />
+          // The only expandable rail. The curated three below deliberately
+          // keep their rotating window of twelve.
+          <RailGrid rail={moodState.data.rail} expandable />
         ) : null}
       </section>
 
@@ -132,18 +134,48 @@ export function MoviesTab() {
 /** Titles a rail shows at once, out of the larger pool the route returns. */
 const RAIL_SIZE = 12;
 
-function RailGrid({ rail }: { rail: Rail }) {
+function RailGrid({ rail, expandable = false }: { rail: Rail; expandable?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  // Collapsing from below the fold would otherwise leave the reader looking at
+  // whatever the page reflowed under them.
+  useEffect(() => {
+    if (!expanded) return;
+    return () => headingRef.current?.scrollIntoView({ block: "nearest" });
+  }, [expanded]);
+
   // A different window of the pool each visit — see `rotateWindow`. Keyed on
-  // the rail title so the three rails move independently rather than in step.
-  const items = useMemo(
+  // the rail title so the rails move independently rather than in step.
+  const shown = useMemo(
     () => rotateWindow(rail.items, RAIL_SIZE, rail.title),
     [rail.items, rail.title],
   );
 
+  /*
+     Expanding appends; it never reshuffles.
+
+     The obvious implementation — render `rail.items` when expanded — puts the
+     pool back in plain rank order, so the twelve already on screen jump to new
+     positions the moment the button is pressed. Keeping the rotated window
+     first and adding the remainder after it means the only thing that changes
+     is that more appears below.
+  */
+  const items = useMemo(() => {
+    if (!expandable || !expanded) return shown;
+    const inWindow = new Set(shown);
+    return [...shown, ...rail.items.filter((item) => !inWindow.has(item))];
+  }, [expandable, expanded, shown, rail.items]);
+
+  const canExpand = expandable && rail.items.length > RAIL_SIZE;
+
   return (
     <>
       <div className="mb-6 border-b border-white/10 pb-4">
-        <h2 className="font-headline-lg text-headline-lg-mobile text-on-surface md:text-headline-lg">
+        <h2
+          ref={headingRef}
+          className="font-headline-lg text-headline-lg-mobile text-on-surface md:text-headline-lg"
+        >
           {rail.title}
         </h2>
         {rail.blurb ? (
@@ -167,6 +199,17 @@ function RailGrid({ rail }: { rail: Rail }) {
           ))}
         </motion.div>
       )}
+
+      {canExpand ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="mt-6 font-label-md text-label-md text-primary transition-opacity hover:opacity-80"
+        >
+          {expanded ? "Show fewer" : `Show all ${rail.items.length}`}
+        </button>
+      ) : null}
     </>
   );
 }

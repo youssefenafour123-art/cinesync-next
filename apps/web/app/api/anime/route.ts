@@ -1,3 +1,4 @@
+import { CATALOGUE_CACHE } from "@/lib/httpCache";
 import { ANIME_FILTER, curate, discoverEnriched, isoDate } from "@/lib/tmdb";
 import type { AnimePayload } from "@cinesync/shared/payloads";
 
@@ -67,7 +68,7 @@ export async function GET() {
       ],
     };
 
-    return Response.json(payload);
+    return Response.json(payload, { headers: CATALOGUE_CACHE });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load anime";
     return Response.json({ error: message }, { status: 502 });

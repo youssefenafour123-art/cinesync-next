@@ -282,7 +282,17 @@ function baseItem(raw: TmdbListItem, kind: MediaKind): MediaItem {
     title: raw.title || raw.name || "Untitled",
     kind,
     poster: raw.poster_path ? `${IMG}/w500${raw.poster_path}` : undefined,
-    backdrop: raw.backdrop_path ? `${IMG}/original${raw.backdrop_path}` : undefined,
+    /*
+       `w1280`, not `original`.
+
+       TMDB's `original` backdrops are commonly 3840x2160 and one to four
+       megabytes each, and they are displayed on a 70vh hero — and
+       `HeroCarousel` keeps every slide mounted (`opacity: 0`, not
+       `display: none`), so the tracker downloaded five of them at once. 1280
+       is wider than the element is ever rendered on a 1440 viewport once the
+       hero's own scrim and content are over it.
+    */
+    backdrop: raw.backdrop_path ? `${IMG}/w1280${raw.backdrop_path}` : undefined,
     year: date ? date.slice(0, 4) : undefined,
     releaseDate: formatDate(date) ?? "TBA",
     releaseIso: date || undefined,
@@ -1106,9 +1116,19 @@ export async function posterWall(endpoint: "movie" | "tv", pages = 3): Promise<s
     { sort_by: "popularity.desc", "vote_count.gte": "200" },
     pages,
   );
+  /*
+     `w185`, the smallest useful width.
+
+     These are the background wall's tiles. They render at 156px on desktop and
+     108px on mobile, behind a scrim, at 0.58 opacity, blurred by depth — and
+     there are 192 of them on screen at once, which made them the single
+     largest transfer on the landing page by a wide margin. `w342` was over
+     twice the width any of them is ever drawn at, for an image nobody can
+     resolve.
+  */
   return raw
     .filter((r) => r.poster_path)
-    .map((r) => `${IMG}/w342${r.poster_path}`);
+    .map((r) => `${IMG}/w185${r.poster_path}`);
 }
 
 export async function discoverEnriched(
@@ -1625,6 +1645,42 @@ export const MOODS: Mood[] = [
     params: { with_keywords: "209817", "vote_count.gte": "150" },
     minVotes: 400,
     tv: { params: { with_keywords: "209817", "vote_count.gte": "30" }, minVotes: 80 },
+  },
+  {
+    id: "politicaldrama",
+    label: "Political Drama",
+    blurb: "Campaigns, cabinets and the people inside them.",
+    /*
+       The companion to `political`, which selects on the kind of film. This
+       selects on the subject, so an election drama, a Washington procedural or
+       a statesman biopic has somewhere to go — none of them are thrillers.
+
+       Genre 18 does real work here: the keywords alone reach documentaries and
+       satires, and the pairing is what makes this "political drama" rather
+       than "anything political". 298528 is the literal keyword and is far too
+       narrow on its own — six films, nine series — so the campaign, election,
+       president, parliament and democracy keywords widen it.
+
+       Deliberately *not* 6078 ("politics"). It selects on subject matter alone
+       and reaches Ben-Hur and Remember the Titans, which is the same failure
+       the recommendation gate was built to stop.
+    */
+    params: {
+      with_genres: "18",
+      with_keywords: "298528|18075|15134|8570|6079|33640",
+      "vote_count.gte": "120",
+    },
+    minVotes: 300,
+    tv: {
+      params: {
+        with_genres: "18",
+        with_keywords: "298528|18075|15134|8570|6079|33640",
+        "vote_count.gte": "40",
+        // Same anime problem as `spy` — see the note there.
+        without_genres: "16",
+      },
+      minVotes: 80,
+    },
   },
   {
     id: "spy",

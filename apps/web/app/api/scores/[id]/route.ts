@@ -1,3 +1,4 @@
+import { CATALOGUE_CACHE } from "@/lib/httpCache";
 import { fetchScores, hasOmdbKey } from "@/lib/omdb";
 import { fetchReviews, findByImdbId } from "@/lib/tmdb";
 import { fetchCriticalReception } from "@/lib/wikipedia";
@@ -68,5 +69,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     omdbConfigured: hasOmdbKey(),
   };
 
-  return Response.json(payload);
+  // Fired on every details-modal open. `revalidate` governs Next's data cache
+  // but nothing at the edge, so without this each open paid the OMDb +
+  // Wikipedia round trip again.
+  return Response.json(payload, { headers: CATALOGUE_CACHE });
 }

@@ -45,10 +45,19 @@ export async function GET(req: Request) {
 
   try {
     const query = moodQuery(mood, kind);
+    /*
+       Twice what the tab shows, so "Show more" has somewhere to go.
+
+       Same pool size and shape as `app/api/movies/route.ts` (`POOL = 24`),
+       and deliberately not a `?size=` or `?page=` parameter: that would
+       multiply the cache entries behind every mood times every kind, which is
+       the trap `lib/calendar.ts` documents for `month`. One pool, fetched
+       once, expanded on the client for free.
+    */
     const items = await curate(
       endpoint,
       { ...query.params, sort_by: "vote_average.desc" },
-      { minVotes: query.minVotes, floor: query.floor, limit: 12, pages: 2 },
+      { minVotes: query.minVotes, floor: query.floor, limit: 24, pages: 3, shortlist: 32 },
     );
 
     return Response.json({

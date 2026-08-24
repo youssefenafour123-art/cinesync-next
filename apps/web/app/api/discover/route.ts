@@ -1,3 +1,4 @@
+import { CATALOGUE_CACHE } from "@/lib/httpCache";
 import { fetchTopCatalog } from "@/lib/cinemeta";
 import { posterWall, withCommunityPosters } from "@/lib/tmdb";
 import type { MediaItem } from "@/lib/types";
@@ -66,7 +67,7 @@ export async function GET() {
     wall: buildWall(movies, series, tmdbMovies, tmdbSeries),
   };
 
-  return Response.json(payload);
+  return Response.json(payload, { headers: CATALOGUE_CACHE });
 }
 
 /**

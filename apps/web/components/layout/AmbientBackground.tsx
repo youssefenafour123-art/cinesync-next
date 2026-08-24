@@ -280,6 +280,19 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
       window.addEventListener("scroll", onScroll, { passive: true });
 
       const tick = () => {
+        /*
+           Nothing to ease toward while the tab is in the background.
+
+           This component is mounted outside the tab shell, so it never
+           unmounts, and the ticker was explicitly woken and then left running
+           for the life of the session — writing ~43 styles a frame behind an
+           inactive tab, a modal, or a scrolled-away viewport. `document.hidden`
+           is the cheap half of that: the browser throttles rAF for a hidden
+           tab but does not stop it, and every one of those frames was doing
+           the full pointer-proximity pass over twelve columns for nobody.
+        */
+        if (document.hidden) return;
+
         cur.x += (target.x - cur.x) * 0.045;
         cur.y += (target.y - cur.y) * 0.045;
 
@@ -319,9 +332,18 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
       // new art keeps arriving without a visible reshuffle.
       const queue = [...spare];
 
+      /*
+         Looked up once. This ran a document-wide `querySelectorAll` returning
+         192 nodes every 2.5-5 seconds, for the whole session.
+      */
+      const wallImages = gsap.utils.toArray<HTMLImageElement>(".bg-wall-track img");
+
       const rotate = () => {
-        const imgs = gsap.utils.toArray<HTMLImageElement>(".bg-wall-track img");
-        const next = queue.shift();
+        const imgs = wallImages;
+        // A hidden tab is still downloading and decoding a fresh poster every
+        // few seconds for a layer nobody is looking at. Skip the swap, keep
+        // the loop alive so it resumes on return.
+        const next = document.hidden ? undefined : queue.shift();
         if (next && imgs.length) {
           const el = imgs[Math.floor(Math.random() * imgs.length)];
           const previous = el.src;
@@ -337,7 +359,10 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
             },
           });
         }
-        gsap.delayedCall(gsap.utils.random(2.5, 5), rotate);
+        // Slower than it was (2.5-5s). Each pass is a fresh image download and
+        // decode; at the old cadence that is a continuous background transfer
+        // for a decorative layer sitting under a scrim.
+        gsap.delayedCall(gsap.utils.random(6, 11), rotate);
       };
       gsap.delayedCall(3, rotate);
 

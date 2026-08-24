@@ -49,6 +49,9 @@ export function PosterImage({ src, variants, alt, className = "" }: PosterImageP
       src={chosen}
       alt={alt}
       loading="lazy"
+      // Off the main thread. Without it the browser decodes synchronously
+      // during layout, and a rail commits a dozen of these at once.
+      decoding="async"
       className={className}
       onError={() => setFailed(true)}
     />

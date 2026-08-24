@@ -58,7 +58,20 @@ export function posterVariant(primary?: string, variants?: string[]): string | u
  */
 export function sizedPoster(url?: string): string | undefined {
   if (!url || typeof window === "undefined") return url;
-  return window.innerWidth <= 640 ? url.replace("/w500/", "/w342/") : url;
+  /*
+     Desktop steps down too, but only where the screen cannot show the
+     difference.
+
+     This used to fire below 640px only, so a 190px-wide rail card on a desktop
+     downloaded `w500` — nearly three times the width it renders at. But the
+     Curated tab's grid cards are close to 300px, and a 2x panel wants 600
+     device pixels for those, so a blanket downgrade would visibly soften them.
+     Pixel ratio is the honest test: on a 1x screen `w342` is still above every
+     card size this app renders; on 2x, `w500` is the one that is short.
+  */
+  const dense = window.devicePixelRatio >= 1.5;
+  if (dense) return url;
+  return url.replace("/w500/", "/w342/");
 }
 
 /**

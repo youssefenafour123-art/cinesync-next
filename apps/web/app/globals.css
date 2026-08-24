@@ -357,6 +357,22 @@ body {
      set it from their own identity; the rest fall back to the nth-child rules
      below. */
   animation-delay: var(--cs-edge-delay, 0s);
+  /*
+     Held still until the card is pointed at.
+
+     Animating `--cs-edge-angle` regenerates the conic gradient and re-runs the
+     mask composite on every frame, and it cannot be handed to the compositor —
+     so with this running it was 36 guaranteed repaints per frame on Discover
+     and 48 on Curated, off-screen cards included, forever. Measured at ~3s of
+     style recalculation on a single landing-page load.
+
+     Pausing rather than removing keeps the ring exactly as designed: the
+     negative delay above means each card still renders at its own angle, so a
+     rail is a row of rings caught at different points of the same sweep. It
+     only starts turning under the cursor, which is the moment it reads as
+     light rather than as ambience.
+  */
+  animation-play-state: paused;
 }
 
 .carousel-item:nth-child(3n + 2) .carousel-poster::after {
@@ -370,8 +386,11 @@ body {
 /* Brighter under the cursor, and joined by an outer bloom — the same light,
    read as a highlight rather than as ambience. */
 .poster-glow:hover::after,
-.carousel-item:hover .carousel-poster::after {
+.poster-glow:focus-within::after,
+.carousel-item:hover .carousel-poster::after,
+.carousel-item:focus-within .carousel-poster::after {
   opacity: 1;
+  animation-play-state: running;
 }
 
 .poster-glow:hover,
@@ -512,8 +531,24 @@ body {
 .bg-wall-col {
   flex: 0 0 auto;
   width: 156px;
-  /* The pointer-proximity pass writes transform and filter here every frame. */
-  will-change: transform, filter;
+  /* The pointer-proximity pass writes transform and opacity here every frame.
+     It has never written a filter — see `AmbientBackground`, which is explicit
+     that everything pointer-driven goes onto transforms and opacity. */
+  will-change: transform;
+  /*
+     The wall's grade, twelve passes instead of 192.
+
+     This lived on `.bg-wall img`, so every one of the wall's 192 images was
+     its own filter pass, and alongside it a `0 20px 50px` box-shadow was 192
+     separate 50px blur rasterisations. The shadow is gone outright: the wall
+     sits behind a scrim at 0.58 opacity with its posters overlapping, and
+     none of it could be seen.
+
+     Here rather than on `.bg-wall`, which would be one pass but would also
+     flatten its `transform-style: preserve-3d` and collapse the column depth
+     the ticker writes.
+  */
+  filter: saturate(1.25) contrast(1.04) brightness(1.06);
 }
 
 .bg-wall-track {
@@ -530,9 +565,9 @@ body {
   object-fit: cover;
   border-radius: 12px;
   background: #101010;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9);
-  filter: saturate(1.25) contrast(1.04) brightness(1.06);
 }
+
+
 
 /* Keeps the wall as texture rather than something competing with the text on
    top of it. Static — the pointer moves .bg-spotlight instead, because
