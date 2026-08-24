@@ -151,7 +151,8 @@ async function run() {
     JSON.stringify(unlocked));
 
   // ---- 7. Movies tab: mood rails ----
-  await nav(page, 'Movies');
+  // The tab is labelled "Curated"; its id stays `movies`. See TABS in useAppStore.
+  await nav(page, 'Curated');
   await waitFor(page, () => document.querySelectorAll('button[aria-pressed]').length >= 8);
   const moods = await page.evaluate(() => {
     const chips = [...document.querySelectorAll('button[aria-pressed]')].map((b) => b.textContent.trim());

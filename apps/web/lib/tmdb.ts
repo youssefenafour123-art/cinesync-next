@@ -61,7 +61,7 @@ interface TmdbDetail {
   /** Series only. TMDB's own totals — the whole run, not the current season. */
   number_of_seasons?: number;
   number_of_episodes?: number;
-  genres?: { name: string }[];
+  genres?: { id?: number; name: string }[];
   credits?: {
     crew?: {
       id?: number;
@@ -141,7 +141,53 @@ const US_RELEASE_PREFERENCE = [3, 2, 4, 6, 5];
 /** TMDB release type 1. A screening, not a release. */
 const PREMIERE = 1;
 
-function usReleaseDate(results: TmdbDetail["release_dates"]): string | undefined {
+/**
+ * How long after its first American date a film is still having the same
+ * release. Theatrical, then digital, then physical — a year and a half is
+ * generous for that run and nowhere near a repertory re-release.
+ */
+const RELEASE_RUN_DAYS = 548;
+
+/**
+ * How far a film's first American date may sit behind its world premiere
+ * before the American record stops being about the same event. Five years is
+ * past any distribution deal and into rediscovery.
+ */
+const REDISCOVERY_DAYS = 1825;
+
+/**
+ * The American release, ignoring later re-releases.
+ *
+ * The type ranking alone got this badly wrong, because "earliest wins" only
+ * applied *within* a type: a late Theatrical entry beat an early Limited one.
+ * A film with no original American theatrical run — most classics, most anime
+ * — has exactly one type-3 entry, the modern repertory booking, so The End of
+ * Evangelion (1997) was dated **2026** and Spirited Away (2001) **2025**, on
+ * cards, in the details panel and on the calendar. "Under the Radar", a rail
+ * that admits nothing from the last three years, was showing a film from 1997
+ * labelled next year: the rail filters on `primary_release_date` at the
+ * `/discover` step and the relabelling happens here, afterwards.
+ *
+ * So the American entries are first narrowed to one release: those within
+ * `RELEASE_RUN_DAYS` of the earliest of them. The ranking then runs unchanged
+ * over that window.
+ *
+ * And when even the earliest American entry postdates the world premiere by
+ * `REDISCOVERY_DAYS`, the whole American record is a later rediscovery rather
+ * than this film's release, and the caller is better served by the primary
+ * date it already has — End of Evangelion's first American entry is a 2002
+ * DVD, five years after Japan.
+ *
+ * The two rules are deliberately separate. Measuring the window from the
+ * earliest *American* date rather than from the premiere is what protects a
+ * genuinely late first opening: Ikiru reached America in 1956 and Seven
+ * Samurai in 1956, three and four years out, which was ordinary for Japanese
+ * cinema then and is the date this app means to show.
+ */
+function usReleaseDate(
+  results: TmdbDetail["release_dates"],
+  primaryDate?: string,
+): string | undefined {
   const us = (results?.results ?? []).find((r) => r.iso_3166_1 === "US");
   if (!us?.release_dates?.length) return undefined;
 
@@ -150,12 +196,24 @@ function usReleaseDate(results: TmdbDetail["release_dates"]): string | undefined
     .filter((r) => r.date && r.type !== PREMIERE);
   if (!dated.length) return undefined;
 
+  const earliest = dated.reduce((a, b) => (a.date <= b.date ? a : b)).date;
+
+  if (primaryDate) {
+    const behind = dayGap(earliest, primaryDate);
+    if (Number.isFinite(behind) && behind > REDISCOVERY_DAYS) return undefined;
+  }
+
+  const run = dated.filter((r) => {
+    const gap = dayGap(r.date, earliest);
+    return !Number.isFinite(gap) || gap <= RELEASE_RUN_DAYS;
+  });
+
   for (const type of US_RELEASE_PREFERENCE) {
-    const matches = dated.filter((r) => r.type === type).sort((a, b) => a.date.localeCompare(b.date));
+    const matches = run.filter((r) => r.type === type).sort((a, b) => a.date.localeCompare(b.date));
     if (matches.length) return matches[0].date;
   }
 
-  return dated.sort((a, b) => a.date.localeCompare(b.date))[0].date;
+  return run.sort((a, b) => a.date.localeCompare(b.date))[0].date;
 }
 
 /*
@@ -186,12 +244,14 @@ export async function usReleaseDates(ids: number[]): Promise<Map<number, string>
 
   await mapLimit(ids, 8, async (id) => {
     try {
-      const detail = await tmdb<TmdbDetail>(
+      // `TmdbListItem` for `release_date`: `usReleaseDate` needs the primary
+      // date to tell a release from a re-release.
+      const detail = await tmdb<TmdbDetail & TmdbListItem>(
         `/movie/${id}`,
         { append_to_response: MOVIE_APPEND },
         86400,
       );
-      const us = usReleaseDate(detail.release_dates);
+      const us = usReleaseDate(detail.release_dates, detail.release_date);
       if (us) found.set(id, us);
     } catch {
       // Keep the discover date rather than dropping the film.
@@ -444,7 +504,9 @@ async function enrich(raw: TmdbListItem, kind: MediaKind): Promise<MediaItem> {
        time it matters — this only ever downgrades a future date.
     */
     if (kind === "movie") {
-      const us = usReleaseDate(detail.release_dates);
+      // `item.releaseIso` is still TMDB's primary date here — the earliest
+      // release anywhere — which is what tells a re-release from a release.
+      const us = usReleaseDate(detail.release_dates, item.releaseIso);
 
       if (us) {
         // An announced American release: the date, and the source, we want.
@@ -871,20 +933,58 @@ export interface RecommendationSeed {
 }
 
 /**
+ * Genres too broad to be evidence of anything on their own.
+ *
+ * Nearly half the catalogue is a Drama, so "also a Drama" is not a reason to
+ * put a film in front of someone. These four are therefore not allowed to
+ * satisfy the similarity gate by themselves — see `recommendationsFor`. The
+ * ids are shared between TMDB's film and television vocabularies, so one set
+ * covers both.
+ */
+const GENERIC_GENRES = new Set([18, 35, 10751, 10749]);
+
+/** Candidates kept for enrichment. Twelve leaves slack above the ten returned. */
+const REC_SHORTLIST = 12;
+/** Quality bar a neighbour must clear before it is worth recommending. */
+const REC_MIN_VOTES = 100;
+const REC_MIN_RATING = 6;
+
+/**
  * "More like this", from one title someone actually watched.
  *
- * Two TMDB endpoints, in that order and for different reasons.
- * `/recommendations` is TMDB's own behavioural signal — what people who
- * watched this went on to watch — and it is the one worth showing. `/similar`
- * is genre-and-keyword overlap, which for a well-known title is noticeably
- * worse: it answers "shares tags with" rather than "you would like". So
- * `/similar` is only ever a top-up, for a seed thin enough that
- * recommendations alone can't fill a rail.
+ * Relevance decides who is eligible; quality decides the order. Those are
+ * separate questions and the first version conflated them — it merged
+ * `/recommendations` and `/similar` into one pool and sorted the lot by
+ * weighted rating, which threw away the only real similarity signal in the
+ * data and let the weaker endpoint win on popularity. Seeded with Miss Sloane
+ * it returned Remember the Titans and Steel Magnolias: both well-liked, both
+ * sharing exactly one genre with it, Drama.
  *
- * Ranking is the same weighted rating the curated rails use, so a five-vote
- * 10/10 cannot lead the row. The caller asks for more than it shows: the
- * client drops anything already in the viewer's library, and a rail that came
- * back exactly five long would go short every time.
+ * So:
+ *
+ * **`/recommendations` is walked in TMDB's own order and never re-sorted.**
+ * That order is a behavioural ranking — what people who watched this went on
+ * to watch — and it is the whole signal. Re-sorting it destroys it, the same
+ * trap `searchMulti` documents for search results.
+ *
+ * **A candidate must share a genre that means something.** Tier by tier:
+ * one distinctive genre; failing that two of any kind; failing that
+ * `/similar`, which is tag overlap rather than behaviour and has to clear a
+ * higher bar to be used at all. The second tier is not a rare fallback — a
+ * seed whose own genres are all generic, which is every romantic comedy,
+ * produces nothing at the first.
+ *
+ * Only then does rating matter, and only among titles already established as
+ * similar: the shortlist is enriched — which replaces TMDB's rating with
+ * IMDb's — and ordered by the same weighted rating the curated rails use, so
+ * a five-vote 10/10 cannot lead the row. This is `curate`'s two-stage shape,
+ * for the same reasons.
+ *
+ * Returns more than the rail shows, because the client drops anything already
+ * in the viewer's library and a list exactly five long would go short.
+ *
+ * Where TMDB's own pool is thin this cannot invent a better one — it stops the
+ * picks being wrong, it cannot make the data richer.
  */
 export async function recommendationsFor(
   imdbId: string,
@@ -896,8 +996,10 @@ export async function recommendationsFor(
   const { tmdbId, kind } = found;
   const endpoint = kind === "movie" ? "movie" : "tv";
 
-  // The seed's own record, for the rail's heading. Cheap — one cached call.
-  const detail = await tmdb<TmdbListItem>(`/${endpoint}/${tmdbId}`, {}, 86400).catch(() => null);
+  // The seed's own record: its name for the heading, its genres for the gate.
+  const detail = await tmdb<TmdbListItem & TmdbDetail>(`/${endpoint}/${tmdbId}`, {}, 86400).catch(
+    () => null,
+  );
   const seed: RecommendationSeed = {
     imdbId,
     tmdbId,
@@ -905,6 +1007,10 @@ export async function recommendationsFor(
     title: detail?.title || detail?.name || "",
     poster: detail?.poster_path ? `${IMG}/w342${detail.poster_path}` : undefined,
   };
+
+  const seedGenres = new Set(
+    (detail?.genres ?? []).map((g) => g.id).filter((id): id is number => typeof id === "number"),
+  );
 
   const [recommended, similar] = await Promise.all([
     tmdb<{ results?: TmdbListItem[] }>(`/${endpoint}/${tmdbId}/recommendations`, {}, 86400)
@@ -916,29 +1022,64 @@ export async function recommendationsFor(
   ]);
 
   const seen = new Set<number>([tmdbId]);
-  const pool: TmdbListItem[] = [];
-  for (const raw of [...recommended, ...similar]) {
-    if (!raw.id || seen.has(raw.id)) continue;
-    if (!raw.poster_path || !raw.overview) continue;
-    // A floor low enough to keep genuinely obscure neighbours, high enough
-    // that the rail isn't padded with titles nobody has rated.
-    if ((raw.vote_count ?? 0) < 50) continue;
-    seen.add(raw.id);
-    pool.push(raw);
+  const shortlist: TmdbListItem[] = [];
+
+  const worthShowing = (raw: TmdbListItem) =>
+    Boolean(raw.id) &&
+    !seen.has(raw.id) &&
+    Boolean(raw.poster_path) &&
+    Boolean(raw.overview) &&
+    (raw.vote_count ?? 0) >= REC_MIN_VOTES &&
+    (raw.vote_average ?? 0) >= REC_MIN_RATING;
+
+  /** Appends whatever passes, in the order given, until the shortlist is full. */
+  const gather = (list: TmdbListItem[], minShared: number, minDistinctive: number) => {
+    for (const raw of list) {
+      if (shortlist.length >= REC_SHORTLIST) return;
+      if (!worthShowing(raw)) continue;
+
+      const shared = (raw.genre_ids ?? []).filter((id) => seedGenres.has(id));
+      if (shared.length < minShared) continue;
+      if (shared.filter((id) => !GENERIC_GENRES.has(id)).length < minDistinctive) continue;
+
+      seen.add(raw.id);
+      shortlist.push(raw);
+    }
+  };
+
+  if (seedGenres.size) {
+    gather(recommended, 1, 1);
+    gather(recommended, 2, 0);
+    gather(similar, 2, 1);
+  } else {
+    // No genres to compare against — the seed's detail call failed. TMDB's own
+    // ordering is still worth showing; silently returning nothing is not.
+    gather(recommended, 0, 0);
   }
-  if (!pool.length) return { seed, items: [] };
 
-  const mean = pool.reduce((sum, r) => sum + (r.vote_average ?? 0), 0) / pool.length;
-  const shortlist = pool
-    .map((raw) => ({
-      raw,
-      score: weightedRating(raw.vote_average ?? 0, raw.vote_count ?? 0, mean, 300),
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
+  if (!shortlist.length) return { seed, items: [] };
 
-  const items = await Promise.all(shortlist.map((r) => enrich(r.raw, kind)));
-  return { seed, items };
+  const enriched = await Promise.all(shortlist.map((raw) => enrich(raw, kind)));
+  const mean =
+    enriched.reduce((sum, item) => sum + (parseFloat(item.rating ?? "0") || 0), 0) /
+    enriched.length;
+
+  return {
+    seed,
+    items: enriched
+      .map((item) => ({
+        item,
+        score: weightedRating(
+          parseFloat(item.rating ?? "0") || 0,
+          item.voteCount ?? 0,
+          mean,
+          300,
+        ),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((r) => r.item),
+  };
 }
 
 /** Full enrichment for a known TMDB id — used by the details modal. */
@@ -1029,7 +1170,22 @@ export async function searchMulti(query: string, limit = 24): Promise<SearchResu
     ).catch(() => ({ results: [] as TmdbListItem[] })),
   ]);
 
-  const results = [...(first.results ?? []), ...(second.results ?? [])];
+  /*
+     Deduped, because TMDB's paging overlaps: a query for "Avengers" returns
+     six of its thirty-nine title rows on *both* page one and page two. Every
+     duplicate was enriched twice — four wasted upstream calls each — and then
+     rendered twice, under the same React key, since `enrich` keys an item by
+     its IMDb id. Marvel Disk Wars and Masked Avengers each appeared in the
+     results list twice.
+  */
+  const results: TmdbListItem[] = [];
+  const seen = new Set<string>();
+  for (const r of [...(first.results ?? []), ...(second.results ?? [])]) {
+    const id = `${r.media_type}:${r.id}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    results.push(r);
+  }
 
   const titleRaw = results
     .filter((r) => (r.media_type === "movie" || r.media_type === "tv") && r.poster_path)
