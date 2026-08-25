@@ -205,12 +205,17 @@ function TopFiveRow({
                   setPicking(active ? null : rank);
                 }}
                 aria-label={`Replace ${pick.title} at number ${rank} in ${heading}`}
-                className="absolute inset-x-0 bottom-0 z-10 flex justify-center p-2 opacity-0 transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100"
+                /*
+                   The pill *is* the button — not a full-width strip with a pill
+                   centred in it. Laid out that way, the button's own padding
+                   made the bottom 32px of every cover, edge to edge, an
+                   invisible Replace target, so a click low on the poster opened
+                   the search instead of the title.
+                */
+                className="absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-white/15 px-3 py-1 font-label-md text-[12px] text-white opacity-0 backdrop-blur-md transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100"
               >
-                <span className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 font-label-md text-[12px] text-white backdrop-blur-md">
-                  <Icon name="swap_horiz" className="text-[14px]" />
-                  Replace
-                </span>
+                <Icon name="swap_horiz" className="text-[14px]" />
+                Replace
               </button>
 
               <span className="pointer-events-none absolute left-3.5 top-3.5 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 font-label-md text-[12px] text-primary backdrop-blur-md">
