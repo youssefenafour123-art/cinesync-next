@@ -12,6 +12,7 @@ import type { LookupPayload, LookupTitle } from "@/app/api/lookup/route";
 import { metahubPoster } from "@/lib/stremio";
 import { Icon } from "./Icon";
 import { PosterImage } from "./PosterImage";
+import { toMediaItem } from "./SavedTitleGrid";
 
 const RANKS = [1, 2, 3, 4, 5] as const;
 const DEBOUNCE_MS = 350;
@@ -46,6 +47,7 @@ function TopFiveRow({
   heading: string;
 }) {
   const showToast = useAppStore((s) => s.showToast);
+  const openDetails = useAppStore((s) => s.openDetails);
   const [picks, setPicks] = useState<Favourite[] | null>(null);
   const [picking, setPicking] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -153,13 +155,25 @@ function TopFiveRow({
             );
           }
 
+          const open = pick ? () => openDetails(toMediaItem(pick)) : undefined;
+
           return pick ? (
             <motion.div
               key={rank}
               layout
               onHoverStart={() => setHovered(rank)}
               onHoverEnd={() => setHovered((r) => (r === rank ? null : r))}
-              className={`group relative aspect-[2/3] overflow-hidden rounded-xl bg-surface-container transition-shadow ${
+              onClick={open}
+              role="button"
+              tabIndex={0}
+              aria-label={`${pick.title}, number ${rank} in ${heading}`}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  open?.();
+                }
+              }}
+              className={`group relative aspect-[2/3] cursor-pointer overflow-hidden rounded-xl bg-surface-container transition-shadow ${
                 active ? "ring-2 ring-primary" : ""
               }`}
             >
@@ -170,23 +184,30 @@ function TopFiveRow({
               />
 
               {/*
-                 A filled slot is a button too.
+                 The poster opens the title. The controls sit on top of it.
 
-                 It had no click at all, so the only way to change a pick was a
-                 remove control that appeared on hover — invisible on a
-                 touchscreen and easy to miss anywhere else. Pressing the
-                 poster now opens the search on that slot, and choosing
-                 something replaces it, which is what the primary key
-                 (user_id, kind, rank) does anyway.
+                 Pressing a cover used to open the search for that slot, which
+                 made these ten the only posters in the app that did not open
+                 what they show — every other grid, rail and hero opens the
+                 details. So the tile does what the rest of them do, and
+                 replacing moved into a pill of its own that stops the click
+                 from reaching the tile underneath.
               */}
+              <span
+                className="poster-overlay pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100"
+                aria-hidden="true"
+              />
+
               <button
                 type="button"
-                onClick={() => setPicking(active ? null : rank)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPicking(active ? null : rank);
+                }}
                 aria-label={`Replace ${pick.title} at number ${rank} in ${heading}`}
-                className="absolute inset-0 z-10 flex items-end justify-center p-2 opacity-0 transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100"
+                className="absolute inset-x-0 bottom-0 z-10 flex justify-center p-2 opacity-0 transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100"
               >
-                <span className="poster-overlay absolute inset-0" aria-hidden="true" />
-                <span className="relative flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 font-label-md text-[12px] text-white backdrop-blur-md">
+                <span className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 font-label-md text-[12px] text-white backdrop-blur-md">
                   <Icon name="swap_horiz" className="text-[14px]" />
                   Replace
                 </span>
@@ -207,7 +228,12 @@ function TopFiveRow({
               */}
               <motion.button
                 type="button"
-                onClick={() => void clear(rank)}
+                onClick={(e) => {
+                  // The tile opens the title; without this the modal would
+                  // open behind the removal.
+                  e.stopPropagation();
+                  void clear(rank);
+                }}
                 aria-label={`Remove ${pick.title} from ${heading}`}
                 title={`Remove ${pick.title}`}
                 onHoverStart={() => setHovered(rank)}
