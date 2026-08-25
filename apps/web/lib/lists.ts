@@ -231,16 +231,16 @@ export async function fetchFavourites(userId: string, kind: MediaKind): Promise<
  * empty if the second half failed.
  */
 export async function setFavourite(
-  userId: string,
   kind: MediaKind,
   rank: number,
   title: SavedTitle,
 ): Promise<void> {
   if (rank < 1 || rank > 5) throw new Error("A top five has five slots.");
 
+  // No `user_id`: the column defaults to `auth.uid()`, so the row is owned by
+  // whoever is asking and there is no id for a caller to get wrong.
   const { error } = await supabaseBrowser().from("favorites").upsert(
     {
-      user_id: userId,
       kind,
       rank,
       imdb_id: title.imdbId,
@@ -260,15 +260,11 @@ export async function setFavourite(
   }
 }
 
-export async function clearFavourite(
-  userId: string,
-  kind: MediaKind,
-  rank: number,
-): Promise<void> {
+export async function clearFavourite(kind: MediaKind, rank: number): Promise<void> {
+  // No user filter needed — the policy already restricts deletes to your own.
   const { error } = await supabaseBrowser()
     .from("favorites")
     .delete()
-    .eq("user_id", userId)
     .eq("kind", kind)
     .eq("rank", rank);
   if (error) throw new Error(error.message);
@@ -280,5 +276,20 @@ export async function setListVisibility(listId: string, visibility: Visibility):
     .from("lists")
     .update({ visibility })
     .eq("id", listId);
+  if (error) throw new Error(error.message);
+}
+
+/* ------------------------------------------------------------------ *
+ * Following
+ * ------------------------------------------------------------------ */
+
+/** Follows someone. `follower_id` defaults to the caller. */
+export async function follow(userId: string): Promise<void> {
+  const { error } = await supabaseBrowser().from("follows").insert({ followee_id: userId });
+  if (error && !/duplicate key/.test(error.message)) throw new Error(error.message);
+}
+
+export async function unfollow(userId: string): Promise<void> {
+  const { error } = await supabaseBrowser().from("follows").delete().eq("followee_id", userId);
   if (error) throw new Error(error.message);
 }
