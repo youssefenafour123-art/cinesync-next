@@ -32,11 +32,20 @@ export interface SavedTitle {
   poster?: string;
 }
 
+/**
+ * Who may read a list.
+ *
+ * Three states, not a boolean: "only me", "the people who follow me" and
+ * "anyone". A flag could express the first and last and had no way to say the
+ * middle one, which is the default.
+ */
+export type Visibility = "private" | "followers" | "public";
+
 export interface ListSummary {
   id: string;
   name: string;
   description?: string;
-  isPublic: boolean;
+  visibility: Visibility;
   isWatchlist: boolean;
   itemCount: number;
 }
@@ -63,7 +72,7 @@ interface ListRow {
   id: string;
   name: string;
   description: string | null;
-  is_public: boolean;
+  visibility: Visibility;
   is_watchlist: boolean;
   list_items: { count: number }[];
 }
@@ -74,7 +83,7 @@ export async function fetchMyLists(): Promise<ListSummary[]> {
     .from("lists")
     // The count comes back as an aggregate on the relation rather than a
     // second query per list.
-    .select("id,name,description,is_public,is_watchlist,list_items(count)")
+    .select("id,name,description,visibility,is_watchlist,list_items(count)")
     .order("is_watchlist", { ascending: false })
     .order("created_at", { ascending: true });
 
@@ -84,7 +93,7 @@ export async function fetchMyLists(): Promise<ListSummary[]> {
     id: row.id,
     name: row.name,
     description: row.description ?? undefined,
-    isPublic: row.is_public,
+    visibility: row.visibility,
     isWatchlist: row.is_watchlist,
     itemCount: row.list_items?.[0]?.count ?? 0,
   }));
@@ -153,7 +162,7 @@ export async function removeFromList(listId: string, imdbId: string): Promise<vo
 
 export async function createList(
   name: string,
-  options: { description?: string; isPublic?: boolean } = {},
+  options: { description?: string; visibility?: Visibility } = {},
 ): Promise<string> {
   const trimmed = name.trim();
   if (!trimmed || trimmed.length > 60) {
@@ -165,7 +174,9 @@ export async function createList(
     .insert({
       name: trimmed,
       description: options.description?.trim() || null,
-      is_public: options.isPublic ?? true,
+      // Matches the table default. A new list is shown to the people who
+      // follow you, not to everyone, and not to nobody.
+      visibility: options.visibility ?? "followers",
       // Never from here. The one watchlist is the trigger's, and the partial
       // unique index would refuse a second anyway.
       is_watchlist: false,
@@ -186,7 +197,12 @@ export async function deleteList(listId: string): Promise<void> {
  * Top fives
  * ------------------------------------------------------------------ */
 
-/** Anyone's top five, by user id — these are public. */
+/**
+ * Anyone's top five, by user id.
+ *
+ * Public, unlike lists — a top five is the headline of a profile, and a
+ * profile nobody can read is not findable, which is the point of usernames.
+ */
 export async function fetchFavourites(userId: string, kind: MediaKind): Promise<Favourite[]> {
   const { data, error } = await supabaseBrowser()
     .from("favorites")
@@ -255,5 +271,14 @@ export async function clearFavourite(
     .eq("user_id", userId)
     .eq("kind", kind)
     .eq("rank", rank);
+  if (error) throw new Error(error.message);
+}
+
+/** Changes who can see a list. */
+export async function setListVisibility(listId: string, visibility: Visibility): Promise<void> {
+  const { error } = await supabaseBrowser()
+    .from("lists")
+    .update({ visibility })
+    .eq("id", listId);
   if (error) throw new Error(error.message);
 }
