@@ -1,6 +1,7 @@
 "use client";
 
 import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Supabase, in the browser.
@@ -35,7 +36,13 @@ export function isAuthConfigured(): boolean {
   return Boolean(url && anonKey);
 }
 
-let cached: ReturnType<typeof createBrowserClient> | null = null;
+/*
+   Typed as `SupabaseClient`, not `ReturnType<typeof createBrowserClient>`.
+   That helper resolves the function's generics to their constraints, which
+   leaves every call on it — `auth.getUser`, `from(...)` — returning `any`, and
+   `any` on the client that reads sessions is exactly the wrong place for it.
+*/
+let cached: SupabaseClient | null = null;
 
 export function supabaseBrowser() {
   if (!url || !anonKey) {

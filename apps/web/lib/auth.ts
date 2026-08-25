@@ -100,7 +100,21 @@ export async function signUp(input: {
   const { data, error } = await supabaseBrowser().auth.signUp({
     email: input.email,
     password: input.password,
-    options: { data: { username } },
+    options: {
+      data: { username },
+      /*
+         Where the confirmation link comes back to.
+
+         Without this the link lands on `/`, which reads no query string, so a
+         correctly confirmed account looked exactly like a failed signup — the
+         page just opened, signed out. `/auth/callback` exchanges the code the
+         link carries for an actual session.
+
+         Built from the live origin rather than a configured constant so the
+         same code works on localhost and on the deployment.
+      */
+      emailRedirectTo: `${window.location.origin}/auth/callback`,
+    },
   });
 
   if (error) {

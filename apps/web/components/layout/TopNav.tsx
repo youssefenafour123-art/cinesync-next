@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import Image from "next/image";
 import { TABS, useAppStore, type TabId } from "@/store/useAppStore";
+import { useSession } from "@/lib/useSession";
 import { useTabHoverPrefetch } from "@/lib/useTabPrefetch";
 import { Icon } from "@/components/ui/Icon";
 import logoMark from "@/public/logo-mark.png";
@@ -21,6 +22,7 @@ export function TopNav() {
   const setTab = useAppStore((s) => s.setTab);
   const warm = useTabHoverPrefetch();
   const setAuthOpen = useAppStore((s) => s.setAuthOpen);
+  const { user, username, ready } = useSession();
   const setSearchOpen = useAppStore((s) => s.setSearchOpen);
   const navRef = useRef<HTMLElement>(null);
 
@@ -137,14 +139,31 @@ export function TopNav() {
           {/* An account icon that opened the *source* list was the closest
               thing this app had to a sign-in, and it meant something else.
               Sources are still reachable from the Library tab's own button. */}
-          <button
-            type="button"
-            aria-label="Sign in to CineSync"
-            onClick={() => setAuthOpen(true)}
-            className="text-on-surface-variant transition-colors hover:text-primary"
-          >
-            <Icon name="account_circle" />
-          </button>
+          {/* Nothing renders until `ready`: the session is read asynchronously,
+              so showing "sign in" first and swapping to a username a moment
+              later makes every reload look like it signed you out. */}
+          {!ready ? (
+            <span className="h-6 w-6" aria-hidden="true" />
+          ) : user ? (
+            <button
+              type="button"
+              aria-label={`Signed in as ${username ?? "your account"}`}
+              onClick={() => setAuthOpen(true)}
+              className="flex items-center gap-2 text-primary transition-opacity hover:opacity-80"
+            >
+              <Icon name="account_circle" fill />
+              <span className="hidden font-label-md text-label-md sm:inline">{username}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              aria-label="Sign in to CineSync"
+              onClick={() => setAuthOpen(true)}
+              className="text-on-surface-variant transition-colors hover:text-primary"
+            >
+              <Icon name="account_circle" />
+            </button>
+          )}
         </div>
       </div>
     </header>
