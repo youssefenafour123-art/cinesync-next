@@ -44,9 +44,25 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/?auth_error=${encodeURIComponent(exchangeError.message)}`);
   }
 
-  // `next` is echoed from the query string, so it has to be a path on this
-  // origin and not somewhere an attacker chose — an open redirect on the
-  // route that hands out sessions is worth being careful about.
-  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  /*
+     `next` is echoed from the query string, so it has to resolve to this
+     origin and nowhere else — an open redirect on the route that hands out
+     sessions is worth being careful about.
+
+     Resolved through `URL` rather than string-matched. The previous check was
+     `startsWith("/") && !startsWith("//")`, which reads correctly and misses
+     `/\evil.com`: browsers normalise a backslash to a forward slash in the
+     authority position, so that arrives as `//evil.com` and is protocol-
+     relative. Parsing it against the origin and comparing what comes out
+     cannot be fooled by whichever character a browser decides to fold next.
+  */
+  let safeNext = "/";
+  try {
+    const resolved = new URL(next, origin);
+    if (resolved.origin === origin) safeNext = `${resolved.pathname}${resolved.search}`;
+  } catch {
+    // A `next` that will not parse is one we are not going to follow.
+  }
+
   return NextResponse.redirect(`${origin}${safeNext}`);
 }

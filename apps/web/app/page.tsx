@@ -46,6 +46,7 @@ export default function Home() {
   const addSourceOpen = useAppStore((s) => s.addSourceOpen);
   const authOpen = useAppStore((s) => s.authOpen);
   const setAuthOpen = useAppStore((s) => s.setAuthOpen);
+  const showToast = useAppStore((s) => s.showToast);
   const [authMode, setAuthMode] = useState<"signin" | "reset">("signin");
 
   /*
@@ -59,13 +60,30 @@ export default function Home() {
   */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("reset") !== "1") return;
-    setAuthMode("reset");
-    setAuthOpen(true);
+
+    /*
+       A rejected link — expired, already used, or arriving without a code —
+       comes back as `?auth_error=`. The callback has always set it and nothing
+       has ever read it, so the failure it was written to report landed on the
+       homepage as a query string nobody looked at: exactly the silent
+       "the page just opened, signed out" that route exists to prevent.
+    */
+    const authError = params.get("auth_error");
+    if (authError) showToast(authError);
+
+    const wantsReset = params.get("reset") === "1";
+    if (wantsReset) {
+      setAuthMode("reset");
+      setAuthOpen(true);
+    }
+
+    if (!authError && !wantsReset) return;
+
     params.delete("reset");
+    params.delete("auth_error");
     const rest = params.toString();
     window.history.replaceState({}, "", window.location.pathname + (rest ? `?${rest}` : ""));
-  }, [setAuthOpen]);
+  }, [setAuthOpen, showToast]);
   const searchOpen = useAppStore((s) => s.searchOpen);
   const personId = useAppStore((s) => s.personId);
 
