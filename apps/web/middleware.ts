@@ -50,11 +50,21 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   /*
-     Everything except static assets and images.
+     Pages and the auth callback. Not `/api/*`, and not static assets.
 
-     `/api/*` is included on purpose: the authenticated routes coming in later
-     phases read the session from these cookies, and a token that expired
-     between page load and request would otherwise reach them stale.
+     `/api/*` used to be in here, for authenticated route handlers that were
+     coming later. They never came: every user-owned read and write goes
+     straight to Supabase under row-level security, and the only route that
+     authenticates anything — the Stremio relay — carries its own authKey and
+     has never looked at these cookies.
+
+     Meanwhile `getUser()` above is a network call to Supabase's auth server,
+     so every catalogue request was paying for a session refresh that nothing
+     downstream read. Ten of those fire on a first load. The session is still
+     refreshed on the way to the page itself, which is the request that
+     actually renders a signed-in view.
   */
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)"],
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)",
+  ],
 };

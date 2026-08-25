@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DiscoverPayload } from "@/app/api/discover/route";
 import { fetchShared } from "@/lib/useFetch";
+import { backdropPoster } from "@/lib/rotation";
 
 /** Columns on screen, and how long each takes to travel its own height once. */
 const COLUMNS = [
@@ -80,7 +81,15 @@ export function PosterMarquee({ className = "" }: { className?: string }) {
             {/* Twice, so the loop has an identical second copy to slide into
                 and the seam never shows. */}
             {[...col.art, ...col.art].map((src, n) => (
-              <img key={`${src}-${n}`} src={src} alt="" loading="lazy" decoding="async" />
+              // Three columns inside a modal panel, so the same sizing the
+              // backdrop wall uses applies here for the same reason.
+              <img
+                key={`${src}-${n}`}
+                src={backdropPoster(src)}
+                alt=""
+                loading="lazy"
+                decoding="async"
+              />
             ))}
           </div>
         </div>

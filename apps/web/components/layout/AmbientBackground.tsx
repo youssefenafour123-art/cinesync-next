@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import { useReducedMotion } from "@/lib/useReducedMotion";
 import { fetchShared } from "@/lib/useFetch";
+import { backdropPoster } from "@/lib/rotation";
 
 interface AmbientBackgroundProps {
   /** Poster URLs for the parallax wall, once the Discover tab has loaded them. */
@@ -353,7 +354,7 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
             duration: 0.7,
             ease: "power2.in",
             onComplete: () => {
-              el.src = next;
+              el.src = backdropPoster(next);
               queue.push(previous);
               gsap.to(el, { opacity: 1, scale: 1, duration: 0.9, ease: "power2.out" });
             },
@@ -412,7 +413,16 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
                 <div className="bg-wall-track">
                   {[...col, ...col].map((src, i) => (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img key={`${c}-${i}`} src={src} alt="" loading="lazy" decoding="async" />
+                    <img
+                      key={`${c}-${i}`}
+                      // Sized for a 156px column, not for a rail card. See
+                      // `backdropPoster` — this is the difference between about
+                      // one megabyte of backdrop and four.
+                      src={backdropPoster(src)}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                    />
                   ))}
                 </div>
               </div>

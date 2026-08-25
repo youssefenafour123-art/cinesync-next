@@ -56,6 +56,24 @@ export function posterVariant(primary?: string, variants?: string[]): string | u
  * Only `w500` is rewritten, and only downward. Backdrops and profile images
  * come through other paths at their own widths and are left alone.
  */
+/**
+ * The same idea for the backdrop wall, which is far more oversized than a rail.
+ *
+ * `.bg-wall-col` is 156px. The wall was rendering whatever the catalogue
+ * returned — `w500` — which is 53KB a poster against 11KB at `w185`, and the
+ * wall builds twelve columns of eight. That is roughly four megabytes spent on
+ * a decoration that sits at 58% opacity behind a scrim, before the page has
+ * finished the requests it actually needs.
+ *
+ * Two steps rather than one, on the same pixel-ratio test `sizedPoster` uses:
+ * 156px at 2x wants 312 device pixels, which `w342` covers and `w185` would
+ * visibly soften even through the grade.
+ */
+export function backdropPoster(url: string): string {
+  if (typeof window === "undefined") return url;
+  return url.replace("/w500/", window.devicePixelRatio >= 1.5 ? "/w342/" : "/w185/");
+}
+
 export function sizedPoster(url?: string): string | undefined {
   if (!url || typeof window === "undefined") return url;
   /*

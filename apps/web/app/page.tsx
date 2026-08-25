@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAppStore } from "@/store/useAppStore";
 import { useMotionPreference } from "@/lib/useReducedMotion";
@@ -13,24 +14,86 @@ import { BottomNav } from "@/components/layout/BottomNav";
 import { AmbientBackground } from "@/components/layout/AmbientBackground";
 
 import { DiscoverTab } from "@/components/tabs/DiscoverTab";
-import { MoviesTab } from "@/components/tabs/MoviesTab";
-import { AnimeTab } from "@/components/tabs/AnimeTab";
-import { ArabicTab } from "@/components/tabs/ArabicTab";
-import { CalendarTab } from "@/components/tabs/CalendarTab";
-import { TrackerTab } from "@/components/tabs/TrackerTab";
-import { LibraryTab } from "@/components/tabs/LibraryTab";
-import { SettingsTab } from "@/components/tabs/SettingsTab";
-import { ProfileTab } from "@/components/tabs/ProfileTab";
-
-import { DetailsModal } from "@/components/modals/DetailsModal";
-import { TrailerModal } from "@/components/modals/TrailerModal";
-import { AddSourceModal } from "@/components/modals/AddSourceModal";
-import { AuthModal } from "@/components/modals/AuthModal";
-import { SearchModal } from "@/components/modals/SearchModal";
-import { PersonModal } from "@/components/modals/PersonModal";
-import { UserProfileModal } from "@/components/modals/UserProfileModal";
 import { Toast } from "@/components/ui/Toast";
 import { QuoteTicker } from "@/components/ui/QuoteTicker";
+
+/*
+   Everything below arrives after the page does.
+
+   The whole app is one route, so a static import here is a promise that the
+   first visitor downloads all nine tabs and all seven modals before Discover
+   can render — 392KB of compressed JavaScript to show a page that uses about
+   a fifth of it. Discover stays static because it is what loads first;
+   everything else is fetched when it is opened.
+
+   `chunks` below then warms them once the page is idle, so a tab switch is
+   still instant on a connection that has already paid for the download.
+*/
+const chunks = {
+  movies: () => import("@/components/tabs/MoviesTab"),
+  anime: () => import("@/components/tabs/AnimeTab"),
+  arabic: () => import("@/components/tabs/ArabicTab"),
+  calendar: () => import("@/components/tabs/CalendarTab"),
+  tracker: () => import("@/components/tabs/TrackerTab"),
+  library: () => import("@/components/tabs/LibraryTab"),
+  settings: () => import("@/components/tabs/SettingsTab"),
+  profile: () => import("@/components/tabs/ProfileTab"),
+  details: () => import("@/components/modals/DetailsModal"),
+  search: () => import("@/components/modals/SearchModal"),
+};
+
+/**
+ * What a tab looks like for the moment its code is in flight.
+ *
+ * Deliberately not a spinner: the tab it stands in for is about to paint, and
+ * a spinner that appears and vanishes inside 100ms reads as a flicker. Empty
+ * space of roughly the right height does not.
+ */
+function TabPending() {
+  return <div className="min-h-[60vh]" />;
+}
+
+const MoviesTab = dynamic(() => chunks.movies().then((m) => m.MoviesTab), {
+  loading: TabPending,
+});
+const AnimeTab = dynamic(() => chunks.anime().then((m) => m.AnimeTab), { loading: TabPending });
+const ArabicTab = dynamic(() => chunks.arabic().then((m) => m.ArabicTab), { loading: TabPending });
+const CalendarTab = dynamic(() => chunks.calendar().then((m) => m.CalendarTab), {
+  loading: TabPending,
+});
+const TrackerTab = dynamic(() => chunks.tracker().then((m) => m.TrackerTab), {
+  loading: TabPending,
+});
+const LibraryTab = dynamic(() => chunks.library().then((m) => m.LibraryTab), {
+  loading: TabPending,
+});
+const SettingsTab = dynamic(() => chunks.settings().then((m) => m.SettingsTab), {
+  loading: TabPending,
+});
+const ProfileTab = dynamic(() => chunks.profile().then((m) => m.ProfileTab), {
+  loading: TabPending,
+});
+
+/*
+   The modals render nothing until something opens them, so they have no
+   loading state at all: `AnimatePresence` already treats them as absent, and
+   the code arrives in the same tick the backdrop animates in.
+*/
+const DetailsModal = dynamic(() => chunks.details().then((m) => m.DetailsModal));
+const TrailerModal = dynamic(() =>
+  import("@/components/modals/TrailerModal").then((m) => m.TrailerModal),
+);
+const AddSourceModal = dynamic(() =>
+  import("@/components/modals/AddSourceModal").then((m) => m.AddSourceModal),
+);
+const AuthModal = dynamic(() => import("@/components/modals/AuthModal").then((m) => m.AuthModal));
+const SearchModal = dynamic(() => chunks.search().then((m) => m.SearchModal));
+const PersonModal = dynamic(() =>
+  import("@/components/modals/PersonModal").then((m) => m.PersonModal),
+);
+const UserProfileModal = dynamic(() =>
+  import("@/components/modals/UserProfileModal").then((m) => m.UserProfileModal),
+);
 
 export default function Home() {
   const tab = useAppStore((s) => s.tab);
@@ -100,6 +163,31 @@ export default function Home() {
   // Warms the other tabs' payloads once the page goes idle, so switching to
   // one renders populated instead of paying its route handler's cold cost.
   useTabPrefetch(tab);
+
+  /*
+     And the same for their code.
+
+     The split above keeps the other tabs out of the first load; this puts them
+     in the browser's cache shortly after it, so pressing a tab still swaps
+     instantly rather than waiting on a network round trip. Idle rather than on
+     mount, so it competes with nothing that is still painting — and behind a
+     timeout for Safari, where `requestIdleCallback` arrived late.
+
+     The two modals in the list are the ones reachable from any tab: a poster
+     opens Details, and `/` opens Search.
+  */
+  useEffect(() => {
+    const warm = () => {
+      for (const load of Object.values(chunks)) void load();
+    };
+    const idle = window.requestIdleCallback;
+    if (idle) {
+      const id = idle(warm, { timeout: 4000 });
+      return () => window.cancelIdleCallback?.(id);
+    }
+    const t = setTimeout(warm, 2000);
+    return () => clearTimeout(t);
+  }, []);
 
   const [wall, setWall] = useState<string[]>([]);
   const onWall = useCallback((posters: string[]) => setWall(posters), []);
