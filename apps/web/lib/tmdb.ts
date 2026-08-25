@@ -1163,13 +1163,27 @@ export async function recommendationsByTmdb(
 ): Promise<{ seed: RecommendationSeed | null; items: MediaItem[] }> {
   const endpoint = kind === "movie" ? "movie" : "tv";
 
-  // The seed's own record: its name for the heading, its genres for the gate,
-  // and — appended rather than fetched separately — its IMDb id for the payload.
-  const detail = await tmdb<TmdbListItem & TmdbDetail & { external_ids?: { imdb_id?: string } }>(
-    `/${endpoint}/${tmdbId}`,
-    { append_to_response: "external_ids" },
-    86400,
-  ).catch(() => null);
+  /*
+     All three at once.
+
+     The seed's own record is needed for the heading and for the genre gate,
+     but `/recommendations` and `/similar` need only the id and the endpoint,
+     both of which are already in hand. Awaiting the detail first made two
+     requests that could have started immediately wait on a third.
+  */
+  const [detail, recommended, similar] = await Promise.all([
+    tmdb<TmdbListItem & TmdbDetail & { external_ids?: { imdb_id?: string } }>(
+      `/${endpoint}/${tmdbId}`,
+      { append_to_response: "external_ids" },
+      86400,
+    ).catch(() => null),
+    tmdb<{ results?: TmdbListItem[] }>(`/${endpoint}/${tmdbId}/recommendations`, {}, 86400)
+      .then((d) => d.results ?? [])
+      .catch(() => [] as TmdbListItem[]),
+    tmdb<{ results?: TmdbListItem[] }>(`/${endpoint}/${tmdbId}/similar`, {}, 86400)
+      .then((d) => d.results ?? [])
+      .catch(() => [] as TmdbListItem[]),
+  ]);
 
   const seed: RecommendationSeed = {
     imdbId: knownImdbId ?? detail?.external_ids?.imdb_id ?? "",
@@ -1182,15 +1196,6 @@ export async function recommendationsByTmdb(
   const seedGenres = new Set(
     (detail?.genres ?? []).map((g) => g.id).filter((id): id is number => typeof id === "number"),
   );
-
-  const [recommended, similar] = await Promise.all([
-    tmdb<{ results?: TmdbListItem[] }>(`/${endpoint}/${tmdbId}/recommendations`, {}, 86400)
-      .then((d) => d.results ?? [])
-      .catch(() => [] as TmdbListItem[]),
-    tmdb<{ results?: TmdbListItem[] }>(`/${endpoint}/${tmdbId}/similar`, {}, 86400)
-      .then((d) => d.results ?? [])
-      .catch(() => [] as TmdbListItem[]),
-  ]);
 
   const seen = new Set<number>([tmdbId]);
   const shortlist: TmdbListItem[] = [];
@@ -1285,7 +1290,46 @@ export async function recommendationsByTmdb(
 
   if (!shortlist.length) return { seed, items: [] };
 
-  const enriched = await Promise.all(shortlist.map((raw) => enrich(raw, kind)));
+  /*
+     The shortlist used to go through `enrich`, which is a fat TMDB detail
+     request *and* a Cinemeta rating lookup, in sequence, per title — around
+     twenty-four upstream calls to render twelve posters, and the reason this
+     route swung between half a second and nine.
+
+     Almost none of it was used. `baseItem` already carries the poster, title,
+     year, description, rating and vote count straight out of the list
+     response that named these candidates. The one thing genuinely missing is
+     the IMDb id, and that has to stay: `BecauseYouWatched` filters what you
+     have already seen by it, and without it that rail would start
+     recommending back the film you just watched — the one thing it must not
+     do.
+
+     So each candidate costs one small `/external_ids` request instead.
+
+     What is given up is the *source* of the rating: TMDB's rather than IMDb's,
+     for the badge and for the ordering below. Among titles the gate has
+     already established as similar, which of two closely-agreeing scores
+     ranks them is a far smaller thing than the wait was.
+  */
+  const enriched = await Promise.all(
+    shortlist.map(async (raw) => {
+      const item = baseItem(raw, kind);
+      const ids = await tmdb<{ imdb_id?: string }>(
+        `/${endpoint}/${raw.id}/external_ids`,
+        {},
+        86400,
+      ).catch(() => null);
+
+      if (ids?.imdb_id) {
+        item.imdbId = ids.imdb_id;
+        // `enrich` keys an item by its IMDb id, and the client relies on that
+        // key being stable between the two.
+        item.key = ids.imdb_id;
+      }
+      return item;
+    }),
+  );
+
   const mean =
     enriched.reduce((sum, item) => sum + (parseFloat(item.rating ?? "0") || 0), 0) /
     enriched.length;

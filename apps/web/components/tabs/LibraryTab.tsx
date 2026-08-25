@@ -4,7 +4,6 @@ import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { useSourcesStore } from "@/store/useSourcesStore";
 import { useAppStore } from "@/store/useAppStore";
-import { ConnectedSources } from "@/components/library/ConnectedSources";
 import { useSync } from "@/lib/useSync";
 import { useLibraryRefresh } from "@/lib/useLibrarySync";
 import { useLibraryActions } from "@/lib/useLibraryActions";
@@ -20,6 +19,10 @@ export function LibraryTab() {
   const libraryIds = useAppStore((s) => s.libraryIds);
   const libraryLoaded = useAppStore((s) => s.libraryLoaded);
   const { state, start, cancel, running } = useSync();
+  // Only to decide whether this tab can offer a sync at all; the list of
+  // sources themselves lives in Settings now.
+  const connectedCount = useSourcesStore((st) => st.sources.length);
+  const setTab = useAppStore((st) => st.setTab);
   const { refresh, pending: refreshing, connected } = useLibraryRefresh();
   const { remove, removing } = useLibraryActions();
 
@@ -51,25 +54,45 @@ export function LibraryTab() {
       <WatchlistSection />
       <ListsSection />
 
-      <ConnectedSources />
-
       {/* ---- Sync ---- */}
       <section className="glass-panel mb-8 rounded-lg p-6 md:p-8">
         {!showProgress ? (
           <div className="flex flex-col items-center justify-between gap-6 md:flex-row">
             <div>
-              <h3 className="font-title-lg text-title-lg text-on-surface">Ready to Sync</h3>
+              <h3 className="font-title-lg text-title-lg text-on-surface">
+                {connectedCount > 0 ? "Ready to Sync" : "Nothing connected yet"}
+              </h3>
               <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
-                Merge every connected IMDb list into your connected Stremio account libraries.
+                {connectedCount > 0 ? (
+                  "Merge every connected IMDb list into your connected Stremio account libraries."
+                ) : (
+                  /*
+                     Linking moved to Settings, so this panel is the one place
+                     that has to point at it. A Start Sync button above an
+                     empty account list, with no way to fill it from here, is
+                     a dead end.
+                  */
+                  <>
+                    Connect a Stremio account or an IMDb list in{" "}
+                    <button
+                      type="button"
+                      onClick={() => setTab("settings")}
+                      className="text-primary underline underline-offset-2 transition-opacity hover:opacity-80"
+                    >
+                      Settings
+                    </button>{" "}
+                    to sync between them.
+                  </>
+                )}
               </p>
             </div>
             <button
               type="button"
-              onClick={start}
+              onClick={connectedCount > 0 ? start : () => setTab("settings")}
               className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-primary px-8 py-3 font-label-md text-label-md text-on-primary transition-colors hover:bg-primary-fixed"
             >
-              <Icon name="sync" />
-              Start Sync
+              <Icon name={connectedCount > 0 ? "sync" : "link"} />
+              {connectedCount > 0 ? "Start Sync" : "Connect an account"}
             </button>
           </div>
         ) : (
