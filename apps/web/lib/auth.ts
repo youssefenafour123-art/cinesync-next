@@ -132,6 +132,32 @@ export async function signUp(input: {
   return { needsConfirmation: data.session === null };
 }
 
+/**
+ * Emails a link that signs the person in long enough to choose a new password.
+ *
+ * Deliberately says nothing about whether the address exists — `resetPasswordForEmail`
+ * succeeds either way, and the UI reports the same thing both times. An
+ * endpoint that distinguishes "sent" from "no such user" is a way to discover
+ * who has an account here.
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  const { error } = await supabaseBrowser().auth.resetPasswordForEmail(email, {
+    // Through the same exchange as a confirmation link, then back to the app
+    // with a marker that opens the "choose a password" step.
+    redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent("/?reset=1")}`,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** Sets a new password for whoever the current session belongs to. */
+export async function updatePassword(password: string): Promise<void> {
+  if (password.length < 8) {
+    throw new Error("Use at least 8 characters.");
+  }
+  const { error } = await supabaseBrowser().auth.updateUser({ password });
+  if (error) throw new Error(error.message);
+}
+
 export async function signOut(): Promise<void> {
   await supabaseBrowser().auth.signOut();
   clearFetchCache();

@@ -1,12 +1,13 @@
 "use client";
 
 import { useId, useState } from "react";
+import { useSession } from "@/lib/useSession";
 import { Icon } from "@/components/ui/Icon";
 import { PosterMarquee } from "@/components/ui/PosterMarquee";
 import { Typewriter } from "@/components/ui/Typewriter";
 import { ModalShell } from "./ModalShell";
 
-type Mode = "signin" | "signup";
+type Mode = "signin" | "signup" | "forgot" | "reset";
 
 const COPY = {
   signin: {
@@ -24,6 +25,22 @@ const COPY = {
     swap: "Already have an account?",
     swapAction: "Sign in",
     quote: "Keep your films. Follow your people.",
+  },
+  forgot: {
+    heading: "Reset your password",
+    sub: "We'll email you a link to set a new one.",
+    submit: "Send the link",
+    swap: "Remembered it?",
+    swapAction: "Sign in",
+    quote: "It happens. Back in a moment.",
+  },
+  reset: {
+    heading: "Choose a new password",
+    sub: "This replaces the old one everywhere.",
+    submit: "Save password",
+    swap: "",
+    swapAction: "",
+    quote: "New password, same shelves.",
   },
 } as const;
 
@@ -44,19 +61,43 @@ const COPY = {
  * and a quote, this runs real poster art from the catalogue. See
  * `PosterMarquee`.
  */
-export function AuthModal({ onClose }: { onClose: () => void }) {
-  const [mode, setMode] = useState<Mode>("signin");
+export function AuthModal({
+  onClose,
+  initialMode = "signin",
+}: {
+  onClose: () => void;
+  initialMode?: Mode;
+}) {
+  const [mode, setMode] = useState<Mode>(initialMode);
+  const { user, username } = useSession();
   const copy = COPY[mode];
+
+  /*
+     Someone already signed in has no business being shown a sign-in form —
+     which is what clicking your own name used to do. The one exception is
+     `reset`, where a recovery link deliberately leaves you signed in so you
+     can choose the password.
+  */
+  const showAccount = Boolean(user) && mode !== "reset";
 
   return (
     <ModalShell
       onClose={onClose}
-      label={mode === "signin" ? "Sign in to CineSync" : "Create a CineSync account"}
+      label={showAccount ? "Your CineSync account" : COPY[mode].heading}
       className="glass-panel panel-glow max-w-4xl rounded-xl"
     >
       <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
         <div className="custom-scrollbar overflow-y-auto p-6 md:p-10">
-          <AuthForm mode={mode} copy={copy} onSwap={() => setMode(mode === "signin" ? "signup" : "signin")} />
+          {showAccount ? (
+            <AccountPanel
+              username={username}
+              email={user?.email ?? null}
+              onChangePassword={() => setMode("reset")}
+              onDone={onClose}
+            />
+          ) : (
+            <AuthForm mode={mode} copy={copy} onMode={setMode} onDone={onClose} />
+          )}
         </div>
 
         {/*
@@ -77,14 +118,79 @@ export function AuthModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** What a signed-in person sees: who they are, and the two things they can do. */
+function AccountPanel({
+  username,
+  email,
+  onChangePassword,
+  onDone,
+}: {
+  username: string | null;
+  email: string | null;
+  onChangePassword: () => void;
+  onDone: () => void;
+}) {
+  const [pending, setPending] = useState(false);
+
+  const leave = async () => {
+    setPending(true);
+    try {
+      const { signOut } = await import("@/lib/auth");
+      await signOut();
+      onDone();
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center gap-3">
+        <Icon name="account_circle" fill className="text-[44px] text-primary" />
+        <div className="min-w-0">
+          <h1 className="truncate font-display-md text-headline-lg text-on-surface">
+            {username ?? "Your account"}
+          </h1>
+          {email ? (
+            <p className="truncate font-body-md text-[13px] text-on-surface-variant">{email}</p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={onChangePassword}
+          className="flex items-center gap-3 rounded-DEFAULT border border-outline-variant/40 bg-surface-container/40 px-4 py-3 text-left font-label-md text-label-md text-on-surface transition-colors hover:border-primary/40"
+        >
+          <Icon name="key" className="text-[20px] text-on-surface-variant" />
+          Change password
+        </button>
+
+        <button
+          type="button"
+          onClick={leave}
+          disabled={pending}
+          className="flex items-center gap-3 rounded-DEFAULT border border-outline-variant/40 px-4 py-3 text-left font-label-md text-label-md text-on-surface-variant transition-colors hover:border-error/40 hover:text-error disabled:opacity-60"
+        >
+          <Icon name="logout" className="text-[20px]" />
+          {pending ? "Signing out…" : "Sign out"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AuthForm({
   mode,
   copy,
-  onSwap,
+  onMode,
+  onDone,
 }: {
   mode: Mode;
   copy: (typeof COPY)[Mode];
-  onSwap: () => void;
+  onMode: (m: Mode) => void;
+  onDone: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -99,7 +205,8 @@ function AuthForm({
       const { signIn, signUp } = await import("@/lib/auth");
       if (mode === "signin") {
         await signIn(String(form.get("email")), String(form.get("password")));
-      } else {
+        onDone();
+      } else if (mode === "signup") {
         const email = String(form.get("email"));
         const { needsConfirmation } = await signUp({
           email,
@@ -107,6 +214,16 @@ function AuthForm({
           username: String(form.get("username")),
         });
         if (needsConfirmation) setSentTo(email);
+        else onDone();
+      } else if (mode === "forgot") {
+        const email = String(form.get("email"));
+        const { requestPasswordReset } = await import("@/lib/auth");
+        await requestPasswordReset(email);
+        setSentTo(email);
+      } else {
+        const { updatePassword } = await import("@/lib/auth");
+        await updatePassword(String(form.get("password")));
+        onDone();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
@@ -126,8 +243,17 @@ function AuthForm({
         <Icon name="mark_email_read" className="text-[40px] text-primary" />
         <h1 className="font-display-md text-headline-lg text-on-surface">Check your email</h1>
         <p className="font-body-md text-body-md text-on-surface-variant">
-          We sent a confirmation link to <span className="text-on-surface">{sentTo}</span>. Open it
-          and you&rsquo;ll be signed in.
+          {mode === "forgot" ? (
+            <>
+              If <span className="text-on-surface">{sentTo}</span> has an account, a link to set a
+              new password is on its way.
+            </>
+          ) : (
+            <>
+              We sent a confirmation link to <span className="text-on-surface">{sentTo}</span>. Open
+              it and you&rsquo;ll be signed in.
+            </>
+          )}
         </p>
         <button
           type="button"
@@ -161,22 +287,38 @@ function AuthForm({
           />
         ) : null}
 
-        <Field
-          name="email"
-          label="Email"
-          type="email"
-          icon="mail"
-          placeholder="you@example.com"
-          autoComplete="email"
-          required
-        />
+        {/* Every step except choosing a new password needs the address; that
+            one already knows who you are, from the link you followed. */}
+        {mode !== "reset" ? (
+          <Field
+            name="email"
+            label="Email"
+            type="email"
+            icon="mail"
+            placeholder="you@example.com"
+            autoComplete="email"
+            required
+          />
+        ) : null}
 
-        <PasswordField
-          name="password"
-          label="Password"
-          autoComplete={mode === "signin" ? "current-password" : "new-password"}
-        />
+        {mode !== "forgot" ? (
+          <PasswordField
+            name="password"
+            label={mode === "reset" ? "New password" : "Password"}
+            autoComplete={mode === "signin" ? "current-password" : "new-password"}
+          />
+        ) : null}
       </div>
+
+      {mode === "signin" ? (
+        <button
+          type="button"
+          onClick={() => onMode("forgot")}
+          className="-mt-2 self-start font-label-md text-[13px] text-on-surface-variant transition-colors hover:text-primary"
+        >
+          Forgot your password?
+        </button>
+      ) : null}
 
       {mode === "signup" ? (
         /*
@@ -205,16 +347,18 @@ function AuthForm({
         {pending ? "Working…" : copy.submit}
       </button>
 
+      {copy.swap ? (
       <p className="text-center font-body-md text-[13px] text-on-surface-variant">
         {copy.swap}{" "}
         <button
           type="button"
-          onClick={onSwap}
+          onClick={() => onMode(mode === "signin" ? "signup" : "signin")}
           className="font-label-md text-primary transition-opacity hover:opacity-80"
         >
           {copy.swapAction}
         </button>
       </p>
+      ) : null}
     </form>
   );
 }

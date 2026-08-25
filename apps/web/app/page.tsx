@@ -38,6 +38,26 @@ export default function Home() {
   const addSourceOpen = useAppStore((s) => s.addSourceOpen);
   const authOpen = useAppStore((s) => s.authOpen);
   const setAuthOpen = useAppStore((s) => s.setAuthOpen);
+  const [authMode, setAuthMode] = useState<"signin" | "reset">("signin");
+
+  /*
+     A recovery link comes back through `/auth/callback`, which exchanges the
+     code for a session and redirects here with `?reset=1`. The session is
+     real at that point, so without this the person lands signed in with no
+     way to actually change the password they came to change.
+
+     The marker is removed from the address bar afterwards so a reload doesn't
+     reopen the step they already finished.
+  */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("reset") !== "1") return;
+    setAuthMode("reset");
+    setAuthOpen(true);
+    params.delete("reset");
+    const rest = params.toString();
+    window.history.replaceState({}, "", window.location.pathname + (rest ? `?${rest}` : ""));
+  }, [setAuthOpen]);
   const searchOpen = useAppStore((s) => s.searchOpen);
   const personId = useAppStore((s) => s.personId);
 
@@ -124,7 +144,16 @@ export default function Home() {
       <AnimatePresence>{addSourceOpen ? <AddSourceModal key="source" /> : null}</AnimatePresence>
 
       <AnimatePresence>
-        {authOpen ? <AuthModal key="auth" onClose={() => setAuthOpen(false)} /> : null}
+        {authOpen ? (
+          <AuthModal
+            key="auth"
+            initialMode={authMode}
+            onClose={() => {
+              setAuthOpen(false);
+              setAuthMode("signin");
+            }}
+          />
+        ) : null}
       </AnimatePresence>
 
       <AnimatePresence>{searchOpen ? <SearchModal key="search" /> : null}</AnimatePresence>
