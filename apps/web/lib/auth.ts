@@ -66,11 +66,21 @@ export async function signIn(email: string, password: string): Promise<void> {
   clearFetchCache();
 }
 
+export interface SignUpResult {
+  /**
+   * True when the account exists but no session was created, because the
+   * project requires the address to be confirmed first. The caller has to say
+   * so — a signup that succeeds and leaves you looking at the same form is
+   * indistinguishable from one that failed.
+   */
+  needsConfirmation: boolean;
+}
+
 export async function signUp(input: {
   email: string;
   password: string;
   username: string;
-}): Promise<void> {
+}): Promise<SignUpResult> {
   const username = validateUsername(input.username);
 
   if (!(await isUsernameAvailable(username))) {
@@ -87,7 +97,7 @@ export async function signUp(input: {
      on `auth.users` creates the profile in the same transaction as the user,
      so either both exist or neither does.
   */
-  const { error } = await supabaseBrowser().auth.signUp({
+  const { data, error } = await supabaseBrowser().auth.signUp({
     email: input.email,
     password: input.password,
     options: { data: { username } },
@@ -103,6 +113,9 @@ export async function signUp(input: {
   }
 
   clearFetchCache();
+  // A confirmed-on-signup project hands back a session; one that emails a link
+  // hands back a user and no session.
+  return { needsConfirmation: data.session === null };
 }
 
 export async function signOut(): Promise<void> {

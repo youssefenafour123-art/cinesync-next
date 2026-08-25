@@ -63,3 +63,27 @@ $$;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- Backfill.
+--
+-- Accounts can already exist: signing up before this migration ran created an
+-- `auth.users` row and, with no trigger yet, no profile — which is the very
+-- state the trigger exists to prevent. Running this migration must repair
+-- those rather than leave them permanently unfindable.
+--
+-- The username comes from the metadata the signup form sent. Where that is
+-- missing, a stable one is derived from the user id so the row is valid and
+-- the person can rename later.
+insert into public.profiles (id, username)
+select
+  u.id,
+  coalesce(
+    nullif(lower(u.raw_user_meta_data ->> 'username'), ''),
+    'user_' || left(replace(u.id::text, '-', ''), 8)
+  )
+from auth.users u
+where not exists (select 1 from public.profiles p where p.id = u.id)
+-- A pre-existing account whose chosen username collides with another's is left
+-- without a profile deliberately: inventing a different handle for someone
+-- silently is worse than a row an admin can see is missing.
+on conflict (username) do nothing;

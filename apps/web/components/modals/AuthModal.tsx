@@ -88,6 +88,7 @@ function AuthForm({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -99,11 +100,13 @@ function AuthForm({
       if (mode === "signin") {
         await signIn(String(form.get("email")), String(form.get("password")));
       } else {
-        await signUp({
-          email: String(form.get("email")),
+        const email = String(form.get("email"));
+        const { needsConfirmation } = await signUp({
+          email,
           password: String(form.get("password")),
           username: String(form.get("username")),
         });
+        if (needsConfirmation) setSentTo(email);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
@@ -111,6 +114,31 @@ function AuthForm({
       setPending(false);
     }
   };
+
+  /*
+     The account exists but there is no session yet, because this project asks
+     for the address to be confirmed. Saying nothing here would leave a
+     successful signup looking exactly like a failed one.
+  */
+  if (sentTo) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Icon name="mark_email_read" className="text-[40px] text-primary" />
+        <h1 className="font-display-md text-headline-lg text-on-surface">Check your email</h1>
+        <p className="font-body-md text-body-md text-on-surface-variant">
+          We sent a confirmation link to <span className="text-on-surface">{sentTo}</span>. Open it
+          and you&rsquo;ll be signed in.
+        </p>
+        <button
+          type="button"
+          onClick={() => setSentTo(null)}
+          className="self-start font-label-md text-label-md text-primary transition-opacity hover:opacity-80"
+        >
+          Use a different address
+        </button>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={submit} autoComplete="on" className="flex flex-col gap-6">
