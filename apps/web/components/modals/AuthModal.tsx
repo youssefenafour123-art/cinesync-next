@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useSession } from "@/lib/useSession";
 import { Icon } from "@/components/ui/Icon";
 import { PosterMarquee } from "@/components/ui/PosterMarquee";
@@ -195,6 +195,36 @@ function AuthForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  /*
+     Seconds left before the confirmation link can be sent again.
+
+     A cooldown rather than an unlimited button, because the thing on the other
+     end of it is rate-limited: letting someone press it four times in a row
+     spends the allowance that the one useful send needed.
+  */
+  const [cooldown, setCooldown] = useState(0);
+  const [resent, setResent] = useState(false);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((n) => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  const resend = async (email: string) => {
+    setError(null);
+    setPending(true);
+    try {
+      const { resendConfirmation } = await import("@/lib/auth");
+      await resendConfirmation(email);
+      setResent(true);
+      setCooldown(60);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That didn't send. Try again in a minute.");
+    } finally {
+      setPending(false);
+    }
+  };
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -204,7 +234,22 @@ function AuthForm({
       const form = new FormData(e.currentTarget);
       const { signIn, signUp } = await import("@/lib/auth");
       if (mode === "signin") {
-        await signIn(String(form.get("email")), String(form.get("password")));
+        const email = String(form.get("email"));
+        try {
+          await signIn(email, String(form.get("password")));
+        } catch (err) {
+          /*
+             Supabase refuses an unconfirmed account with "Email not
+             confirmed", which is accurate and a dead end — the person has no
+             way to act on it. Landing them on the same screen a fresh signup
+             reaches gives them the resend button instead.
+          */
+          if (err instanceof Error && /not confirmed/i.test(err.message)) {
+            setSentTo(email);
+            return;
+          }
+          throw err;
+        }
         onDone();
       } else if (mode === "signup") {
         const email = String(form.get("email"));
@@ -255,9 +300,49 @@ function AuthForm({
             </>
           )}
         </p>
+        {/*
+           Only for a signup. A password reset deliberately reports the same
+           thing whether or not the address has an account, so offering to send
+           it again would be offering to confirm that it does.
+        */}
+        {mode === "signup" ? (
+          <div className="flex flex-col gap-2">
+            {error ? (
+              <p className="font-body-md text-body-md text-error" role="alert">
+                {error}
+              </p>
+            ) : resent ? (
+              <p className="font-body-md text-body-md text-primary" role="status">
+                Sent again. Check your spam folder too.
+              </p>
+            ) : (
+              <p className="font-body-md text-[14px] text-on-surface-variant">
+                Nothing arrived? It may be in spam.
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={() => void resend(sentTo)}
+              disabled={pending || cooldown > 0}
+              className="self-start rounded-full bg-surface-container px-5 py-2 font-label-md text-label-md text-on-surface transition-colors hover:bg-surface-container-high disabled:opacity-50"
+            >
+              {pending
+                ? "Sending…"
+                : cooldown > 0
+                  ? `Send again in ${cooldown}s`
+                  : "Send the link again"}
+            </button>
+          </div>
+        ) : null}
+
         <button
           type="button"
-          onClick={() => setSentTo(null)}
+          onClick={() => {
+            setSentTo(null);
+            setResent(false);
+            setError(null);
+          }}
           className="self-start font-label-md text-label-md text-primary transition-opacity hover:opacity-80"
         >
           Use a different address

@@ -133,6 +133,28 @@ export async function signUp(input: {
 }
 
 /**
+ * Sends the confirmation link again.
+ *
+ * The one thing a stuck signup needs and had no way to ask for. A confirmation
+ * email that does not arrive — caught by a spam filter, or lost to the sending
+ * limit — left the account real, unconfirmed and unusable, with the only route
+ * out being someone opening the Supabase dashboard. That is exactly the manual
+ * step verification is supposed to remove.
+ *
+ * Supabase answers the same way whether or not the address has an unconfirmed
+ * account, and the caller says the same thing either way, so this cannot be
+ * used to find out who has signed up.
+ */
+export async function resendConfirmation(email: string): Promise<void> {
+  const { error } = await supabaseBrowser().auth.resend({
+    type: "signup",
+    email,
+    options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+  });
+  if (error) throw new Error(error.message);
+}
+
+/**
  * Emails a link that signs the person in long enough to choose a new password.
  *
  * Deliberately says nothing about whether the address exists — `resetPasswordForEmail`
