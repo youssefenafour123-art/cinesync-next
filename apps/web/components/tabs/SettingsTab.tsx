@@ -9,6 +9,7 @@ import {
   type MotionPreference,
 } from "@/lib/useReducedMotion";
 import { Icon } from "@/components/ui/Icon";
+import { ConnectedSources } from "@/components/library/ConnectedSources";
 
 /*
    No Profile entry, and no Top Fives.
@@ -21,6 +22,14 @@ import { Icon } from "@/components/ui/Icon";
    that disagree.
 */
 const SECTIONS = [
+  /*
+     Linking an account is the first thing a new person needs and the most
+     settings-shaped act in the app — done once, then forgotten. It was only
+     ever reachable from a button inside the Library tab, which is where the
+     sync that consumes it lives, not where anyone goes looking to connect
+     something.
+  */
+  { id: "accounts", label: "Connected Accounts", icon: "link" },
   { id: "sync", label: "Sync Settings", icon: "sync" },
   { id: "appearance", label: "Appearance", icon: "palette" },
   { id: "api", label: "API Integrations", icon: "api" },
@@ -38,7 +47,7 @@ export function SettingsTab() {
   const settings = useSourcesStore((s) => s.settings);
   const updateSettings = useSourcesStore((s) => s.updateSettings);
   const showToast = useAppStore((s) => s.showToast);
-  const [active, setActive] = useState<string>("sync");
+  const [active, setActive] = useState<string>("accounts");
 
   const jump = (id: string) => {
     setActive(id);
@@ -78,6 +87,11 @@ export function SettingsTab() {
         </aside>
 
         <div className="flex-1 space-y-8">
+          {/* ---- Connected accounts ---- */}
+          <section id="settings-accounts" className="scroll-mt-28">
+            <ConnectedSources />
+          </section>
+
           {/* ---- Sync ---- */}
           <section id="settings-sync" className="glass-panel scroll-mt-28 rounded-lg p-6 md:p-8">
             <h3 className="mb-6 border-b border-white/10 pb-4 font-title-lg text-title-lg text-on-surface">
