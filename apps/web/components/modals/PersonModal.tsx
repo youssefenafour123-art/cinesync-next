@@ -7,6 +7,7 @@ import { useFetch } from "@/lib/useFetch";
 import { useAppStore } from "@/store/useAppStore";
 import { Icon } from "@/components/ui/Icon";
 import { PosterImage } from "@/components/ui/PosterImage";
+import { FollowPersonButton } from "@/components/profile/FollowPersonButton";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { ModalShell } from "./ModalShell";
 
@@ -133,6 +134,16 @@ function Header({ person }: { person: Person }) {
             {person.department}
           </p>
         ) : null}
+
+        {/*
+           Following a person is followed *work*, not a social connection —
+           there is no account behind Denis Villeneuve here — so it sits with
+           the biography rather than anywhere near the follower counts on a
+           profile.
+        */}
+        <div className="mt-4">
+          <FollowPersonButton person={person} />
+        </div>
 
         <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-2 font-body-md text-[14px]">
           {life ? (

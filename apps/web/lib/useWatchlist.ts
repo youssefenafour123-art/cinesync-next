@@ -40,11 +40,11 @@ function setItems(next: SavedTitle[]): void {
   saved = new Set(next.map((t) => t.imdbId));
 }
 
-async function load(): Promise<void> {
+async function load(userId: string): Promise<void> {
   if (inFlight) return inFlight;
   inFlight = (async () => {
     try {
-      const id = await fetchWatchlistId();
+      const id = await fetchWatchlistId(userId);
       watchlistId = id;
       setItems(id ? await fetchListItems(id) : []);
       loaded = true;
@@ -88,7 +88,7 @@ export function useWatchlist() {
       resetWatchlist();
       return;
     }
-    if (!loaded) void load();
+    if (!loaded) void load(user.id);
   }, [user]);
 
   const has = useCallback((imdbId?: string) => Boolean(imdbId && saved.has(imdbId)), []);

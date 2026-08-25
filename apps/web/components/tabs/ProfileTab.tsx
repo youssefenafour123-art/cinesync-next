@@ -12,6 +12,7 @@ import { patchMyProfile, useMyProfile } from "@/lib/useMyProfile";
 import { uploadAvatar } from "@/lib/avatar";
 import type { FollowCounts } from "@/lib/profile";
 import { ListsSection, WatchlistSection } from "@/components/library/SavedSections";
+import { PeoplePanel } from "@/components/profile/PeoplePanel";
 import { SavedTitleGrid } from "@/components/ui/SavedTitleGrid";
 import { TopFive } from "@/components/ui/TopFive";
 import { CountUp } from "@/components/ui/CountUp";
@@ -19,6 +20,7 @@ import { Icon } from "@/components/ui/Icon";
 
 const VIEWS = [
   { id: "profile", label: "Profile" },
+  { id: "people", label: "People" },
   { id: "lists", label: "Lists" },
   { id: "watchlist", label: "Watchlist" },
 ] as const;
@@ -99,6 +101,7 @@ export function ProfileTab() {
       </nav>
 
       {view === "profile" ? <Overview /> : null}
+      {view === "people" ? <PeoplePanel /> : null}
       {view === "lists" ? <ListsSection /> : null}
       {view === "watchlist" ? <WatchlistSection /> : null}
     </div>

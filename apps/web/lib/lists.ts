@@ -77,13 +77,22 @@ interface ListRow {
   list_items: { count: number }[];
 }
 
-/** Every list belonging to the signed-in user, watchlist first. */
-export async function fetchMyLists(): Promise<ListSummary[]> {
+/**
+ * Every list belonging to the signed-in user, watchlist first.
+ *
+ * The `user_id` filter matters as soon as anybody follows anybody. The select
+ * policy grants every list the reader is *allowed* to see — their own, plus
+ * public ones, plus followers-only ones belonging to people they follow — so
+ * leaning on RLS alone made "My Lists" mean "every list I can see" the moment
+ * the follow graph stopped being empty.
+ */
+export async function fetchMyLists(userId: string): Promise<ListSummary[]> {
   const { data, error } = await supabaseBrowser()
     .from("lists")
     // The count comes back as an aggregate on the relation rather than a
     // second query per list.
     .select("id,name,description,visibility,is_watchlist,list_items(count)")
+    .eq("user_id", userId)
     .order("is_watchlist", { ascending: false })
     .order("created_at", { ascending: true });
 
@@ -117,11 +126,20 @@ export async function fetchListItems(listId: string): Promise<SavedTitle[]> {
   }));
 }
 
-/** The signed-in user's watchlist row, creating nothing — the signup trigger owns that. */
-export async function fetchWatchlistId(): Promise<string | null> {
+/**
+ * The signed-in user's watchlist row, creating nothing — the signup trigger
+ * owns that.
+ *
+ * Owner-filtered for the same reason as `fetchMyLists`, and here the
+ * consequence was sharper: follow one person and `is_watchlist` alone matches
+ * their watchlist too, so `maybeSingle()` throws on multiple rows and
+ * `useWatchlist`'s catch turns that into every badge silently going dark.
+ */
+export async function fetchWatchlistId(userId: string): Promise<string | null> {
   const { data, error } = await supabaseBrowser()
     .from("lists")
     .select("id")
+    .eq("user_id", userId)
     .eq("is_watchlist", true)
     .maybeSingle();
 

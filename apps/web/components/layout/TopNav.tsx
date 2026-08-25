@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { TABS, useAppStore, type TabId } from "@/store/useAppStore";
 import { useSession } from "@/lib/useSession";
 import { useMyProfile } from "@/lib/useMyProfile";
+import { useNotifications } from "@/lib/useNotifications";
+import { NotificationsMenu } from "./NotificationsMenu";
 import { useTabHoverPrefetch } from "@/lib/useTabPrefetch";
 import { Icon } from "@/components/ui/Icon";
 import logoMark from "@/public/logo-mark.png";
@@ -27,6 +29,8 @@ export function TopNav() {
   const setProfileOpen = useAppStore((s) => s.setProfileOpen);
   const { user, username, ready } = useSession();
   const { profile } = useMyProfile();
+  const { unread, signedIn } = useNotifications();
+  const [bellOpen, setBellOpen] = useState(false);
   const setSearchOpen = useAppStore((s) => s.setSearchOpen);
   const navRef = useRef<HTMLElement>(null);
 
@@ -133,13 +137,34 @@ export function TopNav() {
               /
             </kbd>
           </button>
-          <button
-            type="button"
-            aria-label="Notifications"
-            className="hidden text-on-surface-variant transition-colors hover:text-primary sm:inline"
-          >
-            <Icon name="notifications" />
-          </button>
+          {/*
+             The bell was decorative — an icon with no `onClick` — for as long
+             as there was nothing to put in it. Signed out it stays hidden
+             rather than becoming an empty panel, the same rule the watchlist
+             button follows.
+          */}
+          {signedIn ? (
+            <div className="relative hidden sm:block">
+              <button
+                type="button"
+                aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+                aria-expanded={bellOpen}
+                onClick={() => setBellOpen((v) => !v)}
+                className={`relative transition-colors hover:text-primary ${
+                  bellOpen ? "text-primary" : "text-on-surface-variant"
+                }`}
+              >
+                <Icon name="notifications" fill={unread > 0} />
+                {unread > 0 ? (
+                  <span className="absolute -right-1 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-label-md text-[10px] font-bold text-on-primary">
+                    {unread > 9 ? "9+" : unread}
+                  </span>
+                ) : null}
+              </button>
+
+              <NotificationsMenu open={bellOpen} onClose={() => setBellOpen(false)} />
+            </div>
+          ) : null}
           {/* An account icon that opened the *source* list was the closest
               thing this app had to a sign-in, and it meant something else.
               Sources are still reachable from the Library tab's own button. */}

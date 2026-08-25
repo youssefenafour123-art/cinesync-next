@@ -75,6 +75,98 @@ export async function fetchProfileByUsername(username: string): Promise<Profile 
 }
 
 /**
+ * Profiles whose username contains what was typed.
+ *
+ * `ilike` rather than an exact match, because this is a search box and nobody
+ * types a whole username. `citext` makes the column case-insensitive already;
+ * the lower-casing here is for the wildcards around it.
+ *
+ * Yourself is excluded — the follow button beside your own name is a control
+ * that can only disappoint, and `follows` has a check constraint refusing it
+ * anyway.
+ */
+export async function searchProfiles(query: string, selfId?: string): Promise<Profile[]> {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) return [];
+
+  let request = supabaseBrowser()
+    .from("profiles")
+    .select("id,username,display_name,bio,avatar_url,created_at")
+    .ilike("username", `%${q}%`)
+    .order("username")
+    .limit(20);
+
+  if (selfId) request = request.neq("id", selfId);
+
+  const { data, error } = await request;
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => toProfile(row as ProfileRow));
+}
+
+/**
+ * The profiles on one side of someone's follow graph.
+ *
+ * Two queries rather than a join: `follows` references `auth.users`, not
+ * `profiles`, so PostgREST has no relationship between them to traverse. Read
+ * the ids, then read the rows.
+ */
+async function profilesFromFollows(
+  column: "follower_id" | "followee_id",
+  matchColumn: "follower_id" | "followee_id",
+  userId: string,
+): Promise<Profile[]> {
+  const client = supabaseBrowser();
+
+  const { data: edges, error } = await client
+    .from("follows")
+    .select(column)
+    .eq(matchColumn, userId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(error.message);
+
+  const ids = (edges ?? []).map((e) => (e as Record<string, string>)[column]).filter(Boolean);
+  if (ids.length === 0) return [];
+
+  const { data, error: profileError } = await client
+    .from("profiles")
+    .select("id,username,display_name,bio,avatar_url,created_at")
+    .in("id", ids);
+
+  if (profileError) throw new Error(profileError.message);
+  return (data ?? []).map((row) => toProfile(row as ProfileRow));
+}
+
+/** Everyone this person follows. */
+export function fetchFollowing(userId: string): Promise<Profile[]> {
+  return profilesFromFollows("followee_id", "follower_id", userId);
+}
+
+/** Everyone following this person. */
+export function fetchFollowers(userId: string): Promise<Profile[]> {
+  return profilesFromFollows("follower_id", "followee_id", userId);
+}
+
+/**
+ * Who the signed-in account follows, as a set of ids.
+ *
+ * Filtered on `follower_id`, and that filter is load-bearing rather than
+ * decorative: the `follows` select policy is `using (true)` because the
+ * visibility rules need every reader to see the edges. An unfiltered select
+ * would therefore return the entire follow graph of every account, and every
+ * Follow button on screen would render as already-followed.
+ */
+export async function fetchFollowedIds(userId: string): Promise<Set<string>> {
+  const { data, error } = await supabaseBrowser()
+    .from("follows")
+    .select("followee_id")
+    .eq("follower_id", userId);
+
+  if (error) throw new Error(error.message);
+  return new Set((data ?? []).map((r) => (r as { followee_id: string }).followee_id));
+}
+
+/**
  * How many follow this person, and how many they follow.
  *
  * Two head-only counts rather than fetching the edges: the screen prints

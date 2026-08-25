@@ -34,11 +34,11 @@ function publish() {
   for (const fn of subscribers) fn();
 }
 
-async function load(): Promise<void> {
+async function load(userId: string): Promise<void> {
   if (inFlight) return inFlight;
   inFlight = (async () => {
     try {
-      lists = await fetchMyLists();
+      lists = await fetchMyLists(userId);
     } catch {
       // An unreadable list collection shows as none, which is the safe way to
       // be wrong: nothing claims to exist that might not.
@@ -92,7 +92,7 @@ export function useLists() {
       resetLists();
       return;
     }
-    if (!loaded) void load();
+    if (!loaded) void load(user.id);
   }, [user]);
 
   /*
