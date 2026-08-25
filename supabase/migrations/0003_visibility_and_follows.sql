@@ -8,7 +8,7 @@
 
 -- -------------------------------------------------------------- follow graph
 
-create table public.follows (
+create table if not exists public.follows (
   follower_id uuid not null references auth.users on delete cascade,
   followee_id uuid not null references auth.users on delete cascade,
   created_at  timestamptz not null default now(),
@@ -19,7 +19,7 @@ create table public.follows (
 
 -- "who follows this person", which the visibility policies below ask on every
 -- read. The primary key already covers the other direction.
-create index follows_by_followee on public.follows (followee_id);
+create index if not exists follows_by_followee on public.follows (followee_id);
 
 alter table public.follows enable row level security;
 
@@ -33,12 +33,14 @@ alter table public.follows enable row level security;
    comparable service, and a follower list nobody can see is not a feature
    people would recognise.
 */
+drop policy if exists "the follow graph is readable by everyone" on public.follows;
 create policy "the follow graph is readable by everyone"
   on public.follows for select using (true);
 
 -- You may create and destroy only your own following, never a follower of
 -- someone else — otherwise anyone could add themselves to another person's
 -- followers and read their followers-only lists.
+drop policy if exists "a user follows and unfollows as themselves" on public.follows;
 create policy "a user follows and unfollows as themselves"
   on public.follows for all
   using ((select auth.uid()) = follower_id)
@@ -47,7 +49,7 @@ create policy "a user follows and unfollows as themselves"
 -- ---------------------------------------------------------------- visibility
 
 alter table public.lists
-  add column visibility text not null default 'followers'
+  add column if not exists visibility text not null default 'followers'
     check (visibility in ('private', 'followers', 'public'));
 
 -- Everything that exists now was created under the old default of public, and
@@ -60,7 +62,19 @@ update public.lists set visibility = case
   else 'private'
 end;
 
-alter table public.lists drop column is_public;
+/*
+   These two are dropped before the column they read, not after.
+
+   Postgres records a policy's dependency on every column its expression
+   names, so dropping `is_public` while either still referenced it failed:
+   "cannot drop column is_public of table lists because other objects depend
+   on it". The first version of this migration had these drops further down,
+   beside the policies that replace them — which reads better and does not run.
+*/
+drop policy if exists "public lists, and your own private ones, are readable" on public.lists;
+drop policy if exists "list items follow the visibility of their list" on public.list_items;
+
+alter table public.lists drop column if exists is_public;
 
 /*
    Whether the reader may see something this person marked "followers".
@@ -90,14 +104,12 @@ as $$
     );
 $$;
 
-drop policy if exists "public lists, and your own private ones, are readable" on public.lists;
-
+drop policy if exists "lists are readable by whoever their visibility allows" on public.lists;
 create policy "lists are readable by whoever their visibility allows"
   on public.lists for select
   using (public.can_view(user_id, visibility));
 
 drop policy if exists "list items follow the visibility of their list" on public.list_items;
-
 create policy "list items follow the visibility of their list"
   on public.list_items for select
   using (
