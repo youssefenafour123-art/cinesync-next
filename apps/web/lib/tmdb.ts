@@ -8,6 +8,7 @@ import type {
   PersonCredit,
   SearchResults,
 } from "./types";
+import type { LookupTitle } from "@cinesync/shared/payloads";
 
 const BASE = "https://api.themoviedb.org/3";
 const IMG = "https://image.tmdb.org/t/p";
@@ -1041,8 +1042,14 @@ const REC_MIN_RATING = 6;
  */
 const REC_MIN_VOTES_KEYWORD = 50;
 
-/** How many of TMDB's own recommendations are worth a keyword lookup each. */
-const KEYWORD_LOOKUPS = 16;
+/**
+ * How many of TMDB's own recommendations are worth a keyword lookup each.
+ *
+ * One request apiece, so this is the cost of the keyword path. Twelve matches
+ * the shortlist it is filling: looking further down a behavioural ranking to
+ * fill a list that stops at twelve is work whose results are discarded.
+ */
+const KEYWORD_LOOKUPS = 12;
 
 /**
  * "More like this", from one title someone actually watched.
@@ -1133,16 +1140,39 @@ export async function recommendationsFor(
 ): Promise<{ seed: RecommendationSeed | null; items: MediaItem[] }> {
   const found = await findByImdbId(imdbId);
   if (!found) return { seed: null, items: [] };
+  return recommendationsByTmdb(found.tmdbId, found.kind, limit, imdbId);
+}
 
-  const { tmdbId, kind } = found;
+/**
+ * The same, for a seed already known by its TMDB id.
+ *
+ * Find Similar's picker gets its candidates straight from TMDB search, so it
+ * has the id and the kind in hand. Going through `recommendationsFor` would
+ * make it resolve an IMDb id it does not have, purely so this function could
+ * turn that back into the TMDB id it started with.
+ *
+ * `knownImdbId` is passed through when the caller happens to have one; when it
+ * does not, the seed's own detail request supplies it via `external_ids` at no
+ * extra cost, because that request has to happen anyway for the genres.
+ */
+export async function recommendationsByTmdb(
+  tmdbId: number,
+  kind: MediaKind,
+  limit = 10,
+  knownImdbId?: string,
+): Promise<{ seed: RecommendationSeed | null; items: MediaItem[] }> {
   const endpoint = kind === "movie" ? "movie" : "tv";
 
-  // The seed's own record: its name for the heading, its genres for the gate.
-  const detail = await tmdb<TmdbListItem & TmdbDetail>(`/${endpoint}/${tmdbId}`, {}, 86400).catch(
-    () => null,
-  );
+  // The seed's own record: its name for the heading, its genres for the gate,
+  // and — appended rather than fetched separately — its IMDb id for the payload.
+  const detail = await tmdb<TmdbListItem & TmdbDetail & { external_ids?: { imdb_id?: string } }>(
+    `/${endpoint}/${tmdbId}`,
+    { append_to_response: "external_ids" },
+    86400,
+  ).catch(() => null);
+
   const seed: RecommendationSeed = {
-    imdbId,
+    imdbId: knownImdbId ?? detail?.external_ids?.imdb_id ?? "",
     tmdbId,
     kind,
     title: detail?.title || detail?.name || "",
@@ -1360,6 +1390,42 @@ export { curate };
  * rest when the query is submitted — one request serves both, since
  * enrichment runs in parallel and costs latency once rather than per title.
  */
+/**
+ * Search, without asking TMDB anything about the results.
+ *
+ * `searchMulti` runs every hit through `enrich`, which costs one detail
+ * request *per title* — twenty-four of them for a single query. That is why
+ * choosing a seed for Find Similar took ten seconds while the recommending
+ * itself took three.
+ *
+ * Picking between eight films called Arrival needs a poster, a year, and
+ * whether it is a film or a show. All three are already in the search
+ * response. So this reads that response and stops, and the seed travels on as
+ * a TMDB id — which `/api/similar` now takes directly, so nothing later has to
+ * resolve an IMDb id that existed only to be resolved back again.
+ */
+export async function lookupTitles(query: string, limit = 8): Promise<LookupTitle[]> {
+  const data = await tmdb<{ results?: TmdbListItem[] }>(
+    "/search/multi",
+    { query, include_adult: "false", page: "1" },
+    600,
+  );
+
+  return (data.results ?? [])
+    .filter((r) => (r.media_type === "movie" || r.media_type === "tv") && Boolean(r.poster_path))
+    .slice(0, limit)
+    .map((r) => {
+      const date = r.release_date || r.first_air_date;
+      return {
+        tmdbId: r.id,
+        kind: r.media_type === "tv" ? ("series" as const) : ("movie" as const),
+        title: r.title || r.name || "Untitled",
+        year: date ? date.slice(0, 4) : undefined,
+        poster: r.poster_path ? `${IMG}/w342${r.poster_path}` : undefined,
+      };
+    });
+}
+
 export async function searchMulti(query: string, limit = 24): Promise<SearchResults> {
   // Two pages, because page one is 20 results across films, series *and*
   // people, which can leave very few titles for a name-heavy query.

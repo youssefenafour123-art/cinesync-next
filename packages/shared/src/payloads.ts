@@ -90,7 +90,32 @@ export interface CalendarPayload {
   entries: CalendarEntry[];
 }
 
-/** `GET /api/similar?imdb=tt…` */
+/**
+ * One candidate from `GET /api/lookup?q=` — the shape a title has before
+ * anything expensive has been asked about it.
+ *
+ * Deliberately not a `MediaItem`. Everything in `MediaItem` beyond these five
+ * fields — the IMDb id, the rating, the cast, the synopsis — comes from a
+ * per-title TMDB detail request, and a search that answers "which of these
+ * eight films called Arrival did you mean" needs a poster, a year and a kind
+ * and nothing else. Twenty-four detail requests to render twenty-four posters
+ * is what made picking a seed take ten seconds.
+ */
+export interface LookupTitle {
+  tmdbId: number;
+  kind: MediaKind;
+  title: string;
+  /** Release year, absent where TMDB has no date yet. */
+  year?: string;
+  poster?: string;
+}
+
+/** `GET /api/lookup?q=` */
+export interface LookupPayload {
+  titles: LookupTitle[];
+}
+
+/** `GET /api/similar?imdb=tt…`, or `?tmdb=…&kind=…` */
 export interface SimilarPayload {
   /**
    * The title the recommendations were drawn from, resolved on TMDB. Null when

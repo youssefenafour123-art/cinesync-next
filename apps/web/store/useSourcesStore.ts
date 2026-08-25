@@ -17,8 +17,6 @@ export interface AppSettings {
   oledMode: boolean;
   tmdbKey: string;
   traktId: string;
-  displayName: string;
-  email: string;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -27,8 +25,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   oledMode: true,
   tmdbKey: "",
   traktId: "",
-  displayName: "",
-  email: "",
 };
 
 function read<T>(key: string, fallback: T): T {

@@ -1,5 +1,5 @@
 import { CATALOGUE_CACHE } from "@/lib/httpCache";
-import { recommendationsFor } from "@/lib/tmdb";
+import { recommendationsByTmdb, recommendationsFor } from "@/lib/tmdb";
 import type { SimilarPayload } from "@cinesync/shared/payloads";
 
 export const revalidate = 86400;
@@ -22,14 +22,32 @@ export type { SimilarPayload };
  * film can share one cache entry.
  */
 export async function GET(req: Request) {
-  const imdb = new URL(req.url).searchParams.get("imdb")?.trim() ?? "";
+  const params = new URL(req.url).searchParams;
+  const imdb = params.get("imdb")?.trim() ?? "";
+  const tmdb = params.get("tmdb")?.trim() ?? "";
+  const kind = params.get("kind")?.trim() ?? "";
 
-  if (!/^tt\d+$/.test(imdb)) {
-    return Response.json({ error: "Pass an IMDb id, e.g. ?imdb=tt4540710" }, { status: 400 });
+  /*
+     Two ways in, because the two callers know the seed by different names.
+
+     `BecauseYouWatched` is seeded by Stremio, which only ever speaks IMDb ids.
+     Find Similar's picker gets its candidates from TMDB search and has the
+     TMDB id already — making it resolve an IMDb id first would add a round
+     trip whose entire purpose was to be undone by `findByImdbId`.
+  */
+  const byTmdb = /^\d+$/.test(tmdb) && (kind === "movie" || kind === "series");
+
+  if (!byTmdb && !/^tt\d+$/.test(imdb)) {
+    return Response.json(
+      { error: "Pass ?imdb=tt4540710, or ?tmdb=329865&kind=movie" },
+      { status: 400 },
+    );
   }
 
   try {
-    const { seed, items } = await recommendationsFor(imdb);
+    const { seed, items } = byTmdb
+      ? await recommendationsByTmdb(Number(tmdb), kind as "movie" | "series")
+      : await recommendationsFor(imdb);
     // A seed TMDB has never heard of is an empty rail, not a failure: the
     // client renders nothing and the viewer is never told about an id they
     // did not type.

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { SimilarPayload } from "@/app/api/similar/route";
-import type { MediaItem, SearchResults } from "@/lib/types";
+import type { LookupPayload, LookupTitle } from "@/app/api/lookup/route";
+import type { MediaItem } from "@/lib/types";
 import { useFetch } from "@/lib/useFetch";
 import { RailGrid } from "./RailGrid";
 import { PosterImage } from "./PosterImage";
@@ -34,7 +35,7 @@ const THIN = 3;
 export function FindSimilar() {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
-  const [seed, setSeed] = useState<MediaItem | null>(null);
+  const [seed, setSeed] = useState<LookupTitle | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), DEBOUNCE_MS);
@@ -51,25 +52,27 @@ export function FindSimilar() {
      the chip, and asking for them again would be a request for something no
      longer on screen.
   */
-  const search = useFetch<SearchResults>(
-    !seed && debounced.length >= 2 ? `/api/search?q=${encodeURIComponent(debounced)}` : null,
-  );
-
-  const similar = useFetch<SimilarPayload>(
-    seed?.imdbId ? `/api/similar?imdb=${encodeURIComponent(seed.imdbId)}` : null,
-  );
-
   /*
-     Only titles with an IMDb id can be offered.
+     `/api/lookup`, not `/api/search`.
 
-     `/api/similar` takes one and nothing else, so a candidate without one is a
-     seed that would fail after being picked. Filtering here means the list only
-     ever contains choices that work.
+     The search route enriches every hit with a TMDB detail request each, which
+     is right for the search modal — it shows ratings and synopses — and was
+     costing ten seconds here to render posters and years. Lookup answers the
+     only question this list asks, in one request.
   */
-  const candidates = useMemo(
-    () => (search.data?.titles ?? []).filter((t) => t.imdbId).slice(0, CANDIDATES),
-    [search.data],
+  const search = useFetch<LookupPayload>(
+    !seed && debounced.length >= 2 ? `/api/lookup?q=${encodeURIComponent(debounced)}` : null,
   );
+
+  // Seeded by TMDB id, which is what the picker already holds. Asking by IMDb
+  // id would mean resolving one just so the route could resolve it back.
+  const similar = useFetch<SimilarPayload>(
+    seed ? `/api/similar?tmdb=${seed.tmdbId}&kind=${seed.kind}` : null,
+  );
+
+  // Every lookup result is a usable seed — the route returns only films and
+  // shows, and `/api/similar` now takes the TMDB id each of them carries.
+  const candidates = useMemo(() => (search.data?.titles ?? []).slice(0, CANDIDATES), [search.data]);
 
   const items = similar.data?.items ?? [];
   // The canonical name from the recommendation route, falling back to the one
@@ -168,11 +171,11 @@ function CandidateList({
   onPick,
 }: {
   query: string;
-  candidates: MediaItem[];
+  candidates: LookupTitle[];
   loading: boolean;
   error: string | null;
   onRetry: () => void;
-  onPick: (item: MediaItem) => void;
+  onPick: (item: LookupTitle) => void;
 }) {
   if (query.length < 2) return null;
 
@@ -213,7 +216,7 @@ function CandidateList({
       >
         {candidates.map((item) => (
           <motion.button
-            key={item.key}
+            key={`${item.kind}:${item.tmdbId}`}
             type="button"
             variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } }}
             whileHover={{ y: -6 }}
@@ -223,12 +226,7 @@ function CandidateList({
             className="group text-left"
           >
             <div className="aspect-[2/3] overflow-hidden rounded-xl bg-surface-container ring-primary/0 transition-all duration-200 group-hover:ring-2 group-hover:ring-primary/60">
-              <PosterImage
-                src={item.poster}
-                variants={item.posters}
-                alt={item.title}
-                className="h-full w-full object-cover"
-              />
+              <PosterImage src={item.poster} alt={item.title} className="h-full w-full object-cover" />
             </div>
             <p className="mt-2 truncate font-title-lg text-[14px] text-on-surface">{item.title}</p>
             {/*
@@ -250,7 +248,7 @@ function SeedChip({
   name,
   onChange,
 }: {
-  seed: MediaItem;
+  seed: LookupTitle;
   name: string;
   onChange: () => void;
 }) {
@@ -263,7 +261,6 @@ function SeedChip({
       <div className="h-14 w-10 shrink-0 overflow-hidden rounded-lg bg-surface-container">
         <PosterImage
           src={seed.poster}
-          variants={seed.posters}
           alt={name || seed.title}
           className="h-full w-full object-cover"
         />

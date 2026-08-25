@@ -40,7 +40,7 @@ export function MoviesTab() {
 
   return (
     <div className="mx-auto w-full max-w-container-max px-margin-mobile pb-16 pt-8 md:px-margin-desktop">
-      <div className="mb-10 flex flex-wrap items-start justify-between gap-4">
+      <div className="mb-10">
         <div>
           <h1 className="font-headline-lg text-headline-lg-mobile text-on-surface md:text-headline-lg">
             Curated Picks
@@ -52,26 +52,36 @@ export function MoviesTab() {
           </p>
         </div>
 
-        <div className="flex gap-2 rounded-full border border-white/10 bg-surface-container/60 p-1">
-          {(["movie", "tv"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setType(t)}
-              aria-pressed={type === t}
-              className={`rounded-full px-5 py-2 font-label-md text-label-md transition-colors ${
-                type === t
-                  ? "bg-primary text-on-primary"
-                  : "text-on-surface-variant hover:text-on-surface"
-              }`}
-            >
-              {t === "movie" ? "Movies" : "TV Shows"}
-            </button>
-          ))}
-        </div>
       </div>
 
       <FindSimilar />
+
+      {/*
+         The catalogue switch sits here, under Find Similar, because that is
+         where it starts mattering.
+
+         At the top of the page it was the first control in reading order and
+         governed nothing above it: Find Similar takes its kind from whichever
+         title you seed it with, and ignores this entirely. Everything below —
+         the mood browser and the curated rails — is what it actually changes.
+      */}
+      <div className="mb-10 flex justify-center gap-2 rounded-full border border-white/10 bg-surface-container/60 p-1 sm:inline-flex sm:justify-start">
+        {(["movie", "tv"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setType(t)}
+            aria-pressed={type === t}
+            className={`flex-1 whitespace-nowrap rounded-full px-5 py-2 font-label-md text-label-md transition-colors sm:flex-none ${
+              type === t
+                ? "bg-primary text-on-primary"
+                : "text-on-surface-variant hover:text-on-surface"
+            }`}
+          >
+            {t === "movie" ? "Movies" : "TV Shows"}
+          </button>
+        ))}
+      </div>
 
       {/* ---- Browse by mood ---- */}
       <section className="mb-16">

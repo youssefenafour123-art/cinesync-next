@@ -95,21 +95,28 @@ export async function fetchFollowCounts(userId: string): Promise<FollowCounts> {
   return { followers: followers.count ?? 0, following: following.count ?? 0 };
 }
 
-/** Updates the parts of your own profile that are yours to write. */
+/**
+ * Updates the parts of your own profile that are yours to write.
+ *
+ * Only the keys actually passed are sent, so updating a bio cannot blank an
+ * avatar. No `id` filter and no user lookup: the update policy already
+ * restricts this to your own row, and a client-supplied owner is one a client
+ * can get wrong — the same rule the `auth.uid()` defaults follow everywhere
+ * else in this schema.
+ */
 export async function updateProfile(patch: {
   displayName?: string | null;
   bio?: string | null;
+  avatarUrl?: string | null;
 }): Promise<void> {
-  const { error } = await supabaseBrowser()
-    .from("profiles")
-    // No `id` filter: the update policy already restricts this to your own row,
-    // and a client-supplied id is one a client can get wrong.
-    .update({
-      ...(patch.displayName !== undefined ? { display_name: patch.displayName } : {}),
-      ...(patch.bio !== undefined ? { bio: patch.bio } : {}),
-    })
-    .eq("id", (await supabaseBrowser().auth.getUser()).data.user?.id ?? "");
+  const row = {
+    ...(patch.displayName !== undefined ? { display_name: patch.displayName } : {}),
+    ...(patch.bio !== undefined ? { bio: patch.bio } : {}),
+    ...(patch.avatarUrl !== undefined ? { avatar_url: patch.avatarUrl } : {}),
+  };
+  if (Object.keys(row).length === 0) return;
 
+  const { error } = await supabaseBrowser().from("profiles").update(row).not("id", "is", null);
   if (error) throw new Error(error.message);
 }
 

@@ -7,17 +7,14 @@ import { useWatchlist } from "@/lib/useWatchlist";
 import { useLists } from "@/lib/useLists";
 import { useAppStore } from "@/store/useAppStore";
 import { useSourcesStore } from "@/store/useSourcesStore";
-import { fetchFavourites } from "@/lib/lists";
-import type { Favourite } from "@/lib/lists";
-import { fetchFollowCounts, fetchProfile, joinedOn } from "@/lib/profile";
+import { fetchFollowCounts, fetchProfile, joinedOn, updateProfile } from "@/lib/profile";
+import { uploadAvatar } from "@/lib/avatar";
 import type { FollowCounts, Profile } from "@/lib/profile";
-import type { MediaKind } from "@/lib/types";
-import { metahubPoster } from "@/lib/stremio";
 import { ListsSection, WatchlistSection } from "@/components/library/SavedSections";
 import { SavedTitleGrid } from "@/components/ui/SavedTitleGrid";
+import { TopFive } from "@/components/ui/TopFive";
 import { CountUp } from "@/components/ui/CountUp";
 import { Icon } from "@/components/ui/Icon";
-import { PosterImage } from "@/components/ui/PosterImage";
 
 const VIEWS = [
   { id: "profile", label: "Profile" },
@@ -100,7 +97,7 @@ export function ProfileTab() {
         ))}
       </nav>
 
-      {view === "profile" ? <Overview userId={user.id} /> : null}
+      {view === "profile" ? <Overview /> : null}
       {view === "lists" ? <ListsSection /> : null}
       {view === "watchlist" ? <WatchlistSection /> : null}
     </div>
@@ -148,28 +145,11 @@ function ProfileHeader({
 
   return (
     <header className="mb-8 flex flex-col gap-6 sm:flex-row sm:items-center">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ type: "spring", stiffness: 260, damping: 24 }}
-        className="relative h-24 w-24 shrink-0"
-      >
-        {/* A ring that turns, slowly. The avatar is a placeholder glyph for
-            most accounts, so the life in this corner has to come from
-            somewhere other than the picture. */}
-        <span className="profile-ring absolute -inset-1 rounded-full" aria-hidden="true" />
-        <span className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-surface-container-high">
-          {profile?.avatarUrl ? (
-            <PosterImage
-              src={profile.avatarUrl}
-              alt={name}
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <Icon name="account_circle" fill className="text-[64px] text-primary" />
-          )}
-        </span>
-      </motion.div>
+      <AvatarPicker
+        url={profile?.avatarUrl}
+        name={name}
+        onUploaded={(avatarUrl) => setProfile((p) => (p ? { ...p, avatarUrl } : p))}
+      />
 
       <div className="min-w-0 flex-1">
         <h1 className="truncate font-headline-lg text-headline-lg-mobile text-on-surface md:text-headline-lg">
@@ -219,11 +199,110 @@ function ProfileHeader({
   );
 }
 
+/**
+ * The profile picture, and the way to change it.
+ *
+ * The whole avatar is the control — a separate "upload" button beside a
+ * picture is a second thing to look at for an action people already expect to
+ * be on the picture itself. The camera badge appears on hover and on keyboard
+ * focus so it is discoverable without sitting there permanently.
+ *
+ * `<input type="file">` is kept in the DOM and driven by the label rather than
+ * being created on the fly: a file dialog opened from a synthetic click is
+ * blocked by browsers unless it descends from a real user gesture.
+ */
+function AvatarPicker({
+  url,
+  name,
+  onUploaded,
+}: {
+  url?: string;
+  name: string;
+  onUploaded: (url: string) => void;
+}) {
+  const showToast = useAppStore((s) => s.showToast);
+  const [busy, setBusy] = useState(false);
+
+  const choose = async (file: File | undefined) => {
+    if (!file || busy) return;
+    setBusy(true);
+    try {
+      const next = await uploadAvatar(file);
+      /*
+         Stored on the profile only after the upload succeeds. Writing the URL
+         first would leave the row pointing at a file that may not exist, and
+         a broken avatar is worse than none.
+      */
+      await updateProfile({ avatarUrl: next });
+      onUploaded(next);
+      showToast("Picture updated.");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "That picture didn't upload.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ type: "spring", stiffness: 260, damping: 24 }}
+      className="relative h-24 w-24 shrink-0"
+    >
+      {/* A ring that turns, slowly. Most accounts show the fallback glyph, so
+          the life in this corner has to come from somewhere other than the
+          picture. */}
+      <span className="profile-ring absolute -inset-1 rounded-full" aria-hidden="true" />
+
+      <label
+        className={`group relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-surface-container-high ${
+          busy ? "cursor-wait" : "cursor-pointer"
+        }`}
+        title="Change your picture"
+      >
+        <input
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          disabled={busy}
+          onChange={(e) => {
+            void choose(e.target.files?.[0]);
+            // Cleared so choosing the same file twice still fires a change.
+            e.target.value = "";
+          }}
+        />
+        <span className="sr-only">Change your profile picture</span>
+
+        {url ? (
+          // A plain img, not PosterImage: that component's failure fallback is
+          // a film-reel glyph, which is the wrong picture for a person.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={url} alt={name} className="h-full w-full object-cover" />
+        ) : (
+          <Icon name="account_circle" fill className="text-[64px] text-primary" />
+        )}
+
+        <span
+          className={`absolute inset-0 flex items-center justify-center bg-black/55 backdrop-blur-[2px] transition-opacity duration-200 ${
+            busy ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+          }`}
+        >
+          <Icon
+            name={busy ? "progress_activity" : "photo_camera"}
+            className={`text-[24px] text-white ${busy ? "animate-spin" : ""}`}
+          />
+        </span>
+      </label>
+    </motion.div>
+  );
+}
+
 /* ------------------------------------------------------------------ *
  * Overview
  * ------------------------------------------------------------------ */
 
-function Overview({ userId }: { userId: string }) {
+function Overview() {
   const watchlist = useWatchlist();
   const { custom, ready: listsReady } = useLists();
   const history = useSourcesStore((s) => s.history);
@@ -300,8 +379,19 @@ function Overview({ userId }: { userId: string }) {
 
       {/* ---- Main column ---- */}
       <div className="min-w-0 flex-1 space-y-6">
-        <FavouriteRow userId={userId} kind="movie" heading="Favourite films" />
-        <FavouriteRow userId={userId} kind="series" heading="Favourite shows" />
+        {/*
+           The picker itself, not a read-only row with an "Edit" link that left
+           the page. Settings no longer holds a copy of your profile, so this is
+           the only place your top fives exist — and editing them where they are
+           displayed is the whole reason they moved.
+        */}
+        <section className="glass-panel rounded-lg p-6">
+          <h3 className="font-title-lg text-title-lg text-on-surface">Top Fives</h3>
+          <p className="mb-6 mt-1 font-body-md text-body-md text-on-surface-variant">
+            The headline of your profile. Anyone who finds you by username can see these.
+          </p>
+          <TopFive />
+        </section>
 
         <section className="glass-panel rounded-lg p-6">
           <div className="mb-4 flex items-center justify-between gap-4">
@@ -337,121 +427,5 @@ function StatRow({ icon, label, value }: { icon: string; label: string; value: n
       </span>
       <CountUp value={value} className="font-title-lg text-[15px] text-on-surface" />
     </div>
-  );
-}
-
-/* ------------------------------------------------------------------ *
- * Favourites
- * ------------------------------------------------------------------ */
-
-/**
- * A top five as the profile shows it: five posters, read-only.
- *
- * The picker lives in Settings and stays there. A profile that is also an
- * editor is the pattern that made the old Settings tab full of controls that
- * looked like status.
- */
-function FavouriteRow({
-  userId,
-  kind,
-  heading,
-}: {
-  userId: string;
-  kind: MediaKind;
-  heading: string;
-}) {
-  const setTab = useAppStore((s) => s.setTab);
-  const openDetails = useAppStore((s) => s.openDetails);
-  const [picks, setPicks] = useState<Favourite[] | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetchFavourites(userId, kind)
-      .then((rows) => {
-        if (!cancelled) setPicks(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setPicks([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, kind]);
-
-  return (
-    <section className="glass-panel rounded-lg p-6">
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <h3 className="font-title-lg text-title-lg text-on-surface">{heading}</h3>
-        <button
-          type="button"
-          onClick={() => setTab("settings")}
-          className="group flex shrink-0 items-center gap-1 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
-        >
-          Edit
-          <Icon
-            name="chevron_right"
-            className="text-[18px] transition-transform duration-200 group-hover:translate-x-1"
-          />
-        </button>
-      </div>
-
-      {picks === null ? (
-        <div className="grid grid-cols-3 gap-4 sm:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="aspect-[2/3] animate-pulse rounded-xl bg-surface-container" />
-          ))}
-        </div>
-      ) : picks.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-white/10 px-6 py-10 text-center font-body-md text-body-md text-on-surface-variant">
-          No picks yet. Choose five in Settings and they become the headline of this page.
-        </p>
-      ) : (
-        <motion.div
-          initial="hidden"
-          animate="show"
-          variants={{ show: { transition: { staggerChildren: 0.06 } } }}
-          className="grid grid-cols-3 gap-4 sm:grid-cols-5"
-        >
-          {picks.map((p) => (
-            <motion.button
-              key={p.rank}
-              type="button"
-              variants={{
-                hidden: { opacity: 0, y: 20 },
-                show: { opacity: 1, y: 0 },
-              }}
-              whileHover={{ y: -8 }}
-              transition={{ type: "spring", stiffness: 260, damping: 24 }}
-              onClick={() =>
-                openDetails({
-                  key: p.imdbId,
-                  imdbId: p.imdbId,
-                  tmdbId: p.tmdbId,
-                  title: p.title,
-                  kind: p.kind,
-                  poster: p.poster,
-                })
-              }
-              title={p.title}
-              className="group relative aspect-[2/3] overflow-hidden rounded-xl bg-surface-container text-left"
-            >
-              <PosterImage
-                src={p.poster ?? metahubPoster(p.imdbId)}
-                alt={p.title}
-                className="h-full w-full object-cover"
-              />
-              <span className="absolute left-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 font-label-md text-[12px] text-primary backdrop-blur-md">
-                {p.rank}
-              </span>
-              <span className="poster-overlay absolute inset-0 flex items-end p-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                <span className="truncate font-label-md text-[12px] text-on-surface">
-                  {p.title}
-                </span>
-              </span>
-            </motion.button>
-          ))}
-        </motion.div>
-      )}
-    </section>
   );
 }

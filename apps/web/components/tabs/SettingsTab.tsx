@@ -9,25 +9,23 @@ import {
   type MotionPreference,
 } from "@/lib/useReducedMotion";
 import { Icon } from "@/components/ui/Icon";
-import { TopFive } from "@/components/ui/TopFive";
-import { useSession } from "@/lib/useSession";
 
+/*
+   No Profile entry, and no Top Fives.
+
+   Both used to live here and both were the wrong shape for a settings screen:
+   one was a display name and email kept in localStorage that rendered only
+   themselves, the other was an editor for something displayed somewhere else
+   entirely. They are the profile, and the profile is reached by clicking your
+   own name — one place that answers "who am I on this site", rather than two
+   that disagree.
+*/
 const SECTIONS = [
-  { id: "profile", label: "Profile", icon: "person" },
   { id: "sync", label: "Sync Settings", icon: "sync" },
   { id: "appearance", label: "Appearance", icon: "palette" },
   { id: "api", label: "API Integrations", icon: "api" },
 ] as const;
 
-/**
- * The top fives sit between Profile and Sync, and only when signed in.
- *
- * Added to the nav rather than declared in `SECTIONS`, because that array is
- * `as const` and every other entry is unconditional — a signed-out visitor
- * being offered a jump link to a panel that renders nothing is the sort of
- * dead control this tab was rebuilt to remove.
- */
-const TOP_FIVE_SECTION = { id: "topfive", label: "Top Fives", icon: "star" } as const;
 
 /**
  * Settings.
@@ -39,17 +37,8 @@ const TOP_FIVE_SECTION = { id: "topfive", label: "Top Fives", icon: "star" } as 
 export function SettingsTab() {
   const settings = useSourcesStore((s) => s.settings);
   const updateSettings = useSourcesStore((s) => s.updateSettings);
-  const sources = useSourcesStore((s) => s.sources);
   const showToast = useAppStore((s) => s.showToast);
-  const { user } = useSession();
-  const [active, setActive] = useState<string>("profile");
-
-  const sections: readonly { id: string; label: string; icon: string }[] = user
-    ? [SECTIONS[0], TOP_FIVE_SECTION, ...SECTIONS.slice(1)]
-    : SECTIONS;
-
-  const stremioCount = sources.filter((s) => s.type === "stremio").length;
-  const listCount = sources.filter((s) => s.type === "imdb_csv").length;
+  const [active, setActive] = useState<string>("sync");
 
   const jump = (id: string) => {
     setActive(id);
@@ -70,7 +59,7 @@ export function SettingsTab() {
       <div className="flex flex-col gap-gutter md:flex-row">
         <aside className="w-full shrink-0 md:w-64">
           <nav className="flex flex-col gap-1 md:sticky md:top-28">
-            {sections.map((s) => (
+            {SECTIONS.map((s) => (
               <button
                 key={s.id}
                 type="button"
@@ -89,60 +78,6 @@ export function SettingsTab() {
         </aside>
 
         <div className="flex-1 space-y-8">
-          {/* ---- Profile ---- */}
-          <section id="settings-profile" className="glass-panel scroll-mt-28 rounded-lg p-6 md:p-8">
-            <div className="mb-8 flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
-              <div className="flex items-center gap-6">
-                <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-outline-variant bg-surface-container-high text-primary">
-                  <Icon name="account_circle" className="text-[44px]" fill />
-                </div>
-                <div>
-                  <h2 className="font-title-lg text-title-lg text-on-surface">
-                    {settings.displayName || "Your Profile"}
-                  </h2>
-                  <p className="font-body-md text-body-md text-on-surface-variant">
-                    {settings.email || "Set a display name and email below"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 font-label-md text-label-md text-primary shadow-[0_0_15px_rgba(78,222,163,0.15)]">
-                <Icon name="workspace_premium" className="text-[18px]" />
-                {stremioCount} account{stremioCount === 1 ? "" : "s"} · {listCount} list
-                {listCount === 1 ? "" : "s"}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <Field
-                label="Display Name"
-                value={settings.displayName}
-                placeholder="Your name"
-                onChange={(v) => updateSettings({ displayName: v })}
-              />
-              <Field
-                label="Email Address"
-                type="email"
-                value={settings.email}
-                placeholder="you@example.com"
-                onChange={(v) => updateSettings({ email: v })}
-              />
-            </div>
-          </section>
-
-          {/* ---- Top fives ---- */}
-          {user ? (
-            <section id="settings-topfive" className="glass-panel scroll-mt-28 rounded-lg p-6 md:p-8">
-              <h3 className="mb-2 border-b border-white/10 pb-4 font-title-lg text-title-lg text-on-surface">
-                Top Fives
-              </h3>
-              <p className="mb-6 font-body-md text-body-md text-on-surface-variant">
-                The headline of your profile. Anyone who finds you by username can see these.
-              </p>
-              <TopFive />
-            </section>
-          ) : null}
-
           {/* ---- Sync ---- */}
           <section id="settings-sync" className="glass-panel scroll-mt-28 rounded-lg p-6 md:p-8">
             <h3 className="mb-6 border-b border-white/10 pb-4 font-title-lg text-title-lg text-on-surface">
@@ -230,33 +165,6 @@ export function SettingsTab() {
           </section>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: string;
-  placeholder?: string;
-}) {
-  return (
-    <div className="space-y-2">
-      <label className="font-label-md text-label-md text-on-surface-variant">{label}</label>
-      <input
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-DEFAULT border border-outline-variant/50 bg-surface-container/50 px-4 py-3 font-body-md text-on-surface backdrop-blur-md transition-all focus:border-primary focus:shadow-[0_0_15px_rgba(78,222,163,0.2)] focus:outline-none"
-      />
     </div>
   );
 }
