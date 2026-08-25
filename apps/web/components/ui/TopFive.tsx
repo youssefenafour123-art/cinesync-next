@@ -192,7 +192,7 @@ function TopFiveRow({
                 </span>
               </button>
 
-              <span className="pointer-events-none absolute left-1.5 top-1.5 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 font-label-md text-[12px] text-primary backdrop-blur-md">
+              <span className="pointer-events-none absolute left-3.5 top-3.5 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 font-label-md text-[12px] text-primary backdrop-blur-md">
                 {rank}
               </span>
 
@@ -221,7 +221,7 @@ function TopFiveRow({
                 whileHover={{ scale: 1.18 }}
                 whileTap={{ scale: 0.82 }}
                 transition={{ type: "spring", stiffness: 520, damping: 26 }}
-                className="absolute right-1.5 top-1.5 z-20 grid h-7 w-7 place-items-center rounded-full bg-black/55 text-white/90 ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-error hover:text-on-error hover:ring-error"
+                className="absolute right-3.5 top-3.5 z-20 grid h-7 w-7 place-items-center rounded-full bg-black/55 text-white/90 ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-error hover:text-on-error hover:ring-error"
               >
                 <Icon name="close" className="text-[14px]" />
               </motion.button>

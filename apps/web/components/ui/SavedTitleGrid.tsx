@@ -140,7 +140,17 @@ export function SavedTitleGrid({
                   whileHover={{ scale: 1.18 }}
                   whileTap={{ scale: 0.82 }}
                   transition={{ type: "spring", stiffness: 520, damping: 26 }}
-                  className="absolute right-1.5 top-1.5 z-20 grid h-7 w-7 place-items-center rounded-full bg-black/55 text-white/90 ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-error hover:text-on-error hover:ring-error"
+                  /*
+                     Inset far enough to clear the corner, not tucked into it.
+
+                     `--radius-xl` is 3rem here, not Tailwind's 0.75rem — these
+                     cards have a 48px corner — and the card is `overflow-hidden`,
+                     so the curve clips anything near it. At 6px in, the button
+                     was being sliced by the poster's own border. A 28px control
+                     that grows to 33px on hover needs about 12px of inset to sit
+                     clear of a 48px arc; 14px leaves margin.
+                  */
+                  className="absolute right-3.5 top-3.5 z-20 grid h-7 w-7 place-items-center rounded-full bg-black/55 text-white/90 ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-error hover:text-on-error hover:ring-error"
                 >
                   <Icon name={removeIcon} className="text-[14px]" />
                 </motion.button>
