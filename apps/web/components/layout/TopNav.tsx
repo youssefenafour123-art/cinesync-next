@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import Image from "next/image";
 import { TABS, useAppStore, type TabId } from "@/store/useAppStore";
 import { useSession } from "@/lib/useSession";
+import { useMyProfile } from "@/lib/useMyProfile";
 import { useTabHoverPrefetch } from "@/lib/useTabPrefetch";
 import { Icon } from "@/components/ui/Icon";
 import logoMark from "@/public/logo-mark.png";
@@ -25,6 +26,7 @@ export function TopNav() {
   const profileOpen = useAppStore((s) => s.profileOpen);
   const setProfileOpen = useAppStore((s) => s.setProfileOpen);
   const { user, username, ready } = useSession();
+  const { profile } = useMyProfile();
   const setSearchOpen = useAppStore((s) => s.setSearchOpen);
   const navRef = useRef<HTMLElement>(null);
 
@@ -162,7 +164,26 @@ export function TopNav() {
                 profileOpen ? "text-primary" : "text-primary/80"
               }`}
             >
-              <Icon name="account_circle" fill />
+              {/*
+                 Your actual picture where the generic glyph was.
+
+                 The ring is drawn with `ring`, not a border, so swapping
+                 between the photo and the fallback doesn't shift the row by a
+                 pixel — the two have to occupy exactly the same box or the nav
+                 twitches when the profile finishes loading.
+              */}
+              {profile?.avatarUrl ? (
+                // A plain img: PosterImage falls back to a film-reel glyph,
+                // which is the wrong picture for a person.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={profile.avatarUrl}
+                  alt=""
+                  className="h-6 w-6 shrink-0 rounded-full object-cover ring-1 ring-primary/40"
+                />
+              ) : (
+                <Icon name="account_circle" fill />
+              )}
               <span className="hidden font-label-md text-label-md sm:inline">{username}</span>
             </button>
           ) : (

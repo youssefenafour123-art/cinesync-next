@@ -7,9 +7,10 @@ import { useWatchlist } from "@/lib/useWatchlist";
 import { useLists } from "@/lib/useLists";
 import { useAppStore } from "@/store/useAppStore";
 import { useSourcesStore } from "@/store/useSourcesStore";
-import { fetchFollowCounts, fetchProfile, joinedOn, updateProfile } from "@/lib/profile";
+import { fetchFollowCounts, joinedOn, updateProfile } from "@/lib/profile";
+import { patchMyProfile, useMyProfile } from "@/lib/useMyProfile";
 import { uploadAvatar } from "@/lib/avatar";
-import type { FollowCounts, Profile } from "@/lib/profile";
+import type { FollowCounts } from "@/lib/profile";
 import { ListsSection, WatchlistSection } from "@/components/library/SavedSections";
 import { SavedTitleGrid } from "@/components/ui/SavedTitleGrid";
 import { TopFive } from "@/components/ui/TopFive";
@@ -116,16 +117,16 @@ function ProfileHeader({
   fallbackUsername: string | null;
 }) {
   const setAuthOpen = useAppStore((s) => s.setAuthOpen);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  /*
+     The shared row, not a second fetch of it. The top nav shows the same
+     picture, so a private copy here would leave the nav on the old one until a
+     reload after every upload.
+  */
+  const { profile } = useMyProfile();
   const [counts, setCounts] = useState<FollowCounts | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void fetchProfile(userId)
-      .then((p) => {
-        if (!cancelled) setProfile(p);
-      })
-      .catch(() => {});
     void fetchFollowCounts(userId)
       .then((c) => {
         if (!cancelled) setCounts(c);
@@ -148,7 +149,7 @@ function ProfileHeader({
       <AvatarPicker
         url={profile?.avatarUrl}
         name={name}
-        onUploaded={(avatarUrl) => setProfile((p) => (p ? { ...p, avatarUrl } : p))}
+        onUploaded={(avatarUrl) => patchMyProfile({ avatarUrl })}
       />
 
       <div className="min-w-0 flex-1">
