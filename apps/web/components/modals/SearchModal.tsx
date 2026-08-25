@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { MediaItem, SearchResults } from "@/lib/types";
+import type { LookupPayload, LookupTitle } from "@/app/api/lookup/route";
 import { useFetch } from "@/lib/useFetch";
 import { useModalBehavior } from "@/lib/useModalBehavior";
 import { useAppStore } from "@/store/useAppStore";
@@ -14,6 +15,25 @@ const DEBOUNCE_MS = 350;
 const QUICK_LIMIT = 6;
 const RECENT_KEY = "cinesync:recent-searches";
 const RECENT_MAX = 8;
+
+/**
+ * A lookup result as a `MediaItem`, for the moment before enrichment lands.
+ *
+ * No `imdbId`, because that is precisely what the expensive call exists to
+ * find — so the row renders without an "In Library" badge until it arrives.
+ * The key is namespaced by TMDB id rather than left undefined, so React keeps
+ * the same element when the enriched item replaces it.
+ */
+function lookupToItem(t: LookupTitle): MediaItem {
+  return {
+    key: `tmdb:${t.tmdbId}`,
+    tmdbId: t.tmdbId,
+    title: t.title,
+    kind: t.kind,
+    poster: t.poster,
+    year: t.year,
+  };
+}
 
 function loadRecent(): string[] {
   try {
@@ -74,8 +94,29 @@ export function SearchModal() {
     return () => clearTimeout(t);
   }, [query]);
 
+  const active = debounced.length >= 2;
+
+  /*
+     Two requests for one query, on purpose.
+
+     `/api/search` enriches every hit — a TMDB detail request *and* a Cinemeta
+     rating lookup per title, run in sequence — which is around forty-eight
+     upstream calls for one query and the reason results took three to fifteen
+     seconds to appear. What it buys is the IMDb rating and the IMDb id behind
+     the "In Library" badge, and both are worth having.
+
+     They are just not worth waiting for. `/api/lookup` answers from the search
+     response alone in about 150ms, so the list appears immediately and the
+     enriched version replaces it in place when it arrives. Nothing moves when
+     it does: the same titles in the same order, with a rating and a badge that
+     were not there a moment ago.
+  */
+  const fast = useFetch<LookupPayload>(
+    active ? `/api/lookup?q=${encodeURIComponent(debounced)}` : null,
+  );
+
   const { data, loading, error } = useFetch<SearchResults>(
-    debounced.length >= 2 ? `/api/search?q=${encodeURIComponent(debounced)}` : null,
+    active ? `/api/search?q=${encodeURIComponent(debounced)}` : null,
   );
 
   const run = useCallback((term: string) => {
@@ -98,7 +139,20 @@ export function SearchModal() {
     });
   }, []);
 
-  const titles = data?.titles ?? [];
+  /*
+     The enriched list wins as soon as it exists; until then the fast one
+     stands in. `/api/lookup` returns eight, `/api/search` up to twenty-four,
+     so the list can grow when the second arrives — which is why the quick view
+     shows six either way and nothing reflows for the common case.
+  */
+  const titles = useMemo(
+    () => data?.titles ?? (fast.data?.titles ?? []).map(lookupToItem),
+    [data, fast.data],
+  );
+
+  // People come only from the enriched route; there is no cheap source for
+  // them, and a cast member appearing a beat later is not a problem worth a
+  // second endpoint.
   const people = data?.people ?? [];
   /*
      Derived, not synced.
@@ -112,7 +166,13 @@ export function SearchModal() {
   const expanded = submitted !== null && submitted === query.trim() && submitted === debounced;
   const shownTitles = expanded ? titles : titles.slice(0, QUICK_LIMIT);
   const shownPeople = expanded ? people : people.slice(0, 3);
-  const empty = debounced.length >= 2 && !loading && !titles.length && !people.length;
+  /*
+     Loading now means "nothing on screen yet", not "a request is in flight" —
+     the enriched call is almost always still running while the fast results
+     are already rendered, and treating that as loading would hide them again.
+  */
+  const pending = (loading || fast.loading) && titles.length === 0;
+  const empty = active && !loading && !fast.loading && !titles.length && !people.length;
 
   return (
     <motion.div
@@ -193,7 +253,7 @@ export function SearchModal() {
                 saveRecent([]);
               }}
             />
-          ) : loading && !data ? (
+          ) : pending ? (
             <p className="pulsing-text px-3 py-10 text-center font-label-md text-label-md text-on-surface-variant">
               Searching…
             </p>

@@ -92,10 +92,21 @@ create index if not exists notifications_for_reader
    and would otherwise re-announce the same film every time, and the client
    inserts with `on conflict do nothing` so a second tab racing the first is
    simply a no-op rather than a duplicate.
+
+   Not a partial index, though only release rows ever fill these columns.
+   `ON CONFLICT (user_id, person_tmdb_id, title_tmdb_id)` — which is what
+   PostgREST sends for the upsert — infers its target from the index, and
+   inference cannot match a partial index unless the statement repeats its
+   predicate, which PostgREST has no way to express. A `where kind = 'release'`
+   here therefore fails at runtime with "no unique or exclusion constraint
+   matching the ON CONFLICT specification".
+
+   Covering every row costs nothing: a follow notification leaves both id
+   columns null, and Postgres treats nulls as distinct in a unique index, so
+   any number of them coexist.
 */
 create unique index if not exists notifications_one_per_release
-  on public.notifications (user_id, person_tmdb_id, title_tmdb_id)
-  where kind = 'release';
+  on public.notifications (user_id, person_tmdb_id, title_tmdb_id);
 
 alter table public.notifications enable row level security;
 

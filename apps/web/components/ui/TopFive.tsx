@@ -7,7 +7,8 @@ import { useFetch } from "@/lib/useFetch";
 import { useAppStore } from "@/store/useAppStore";
 import { clearFavourite, fetchFavourites, setFavourite, toSavedTitle } from "@/lib/lists";
 import type { Favourite } from "@/lib/lists";
-import type { MediaItem, MediaKind, SearchResults } from "@/lib/types";
+import type { MediaItem, MediaKind } from "@/lib/types";
+import type { LookupPayload, LookupTitle } from "@/app/api/lookup/route";
 import { metahubPoster } from "@/lib/stremio";
 import { Icon } from "./Icon";
 import { PosterImage } from "./PosterImage";
@@ -65,16 +66,28 @@ function TopFiveRow({
 
   useEffect(load, [load]);
 
-  const choose = async (rank: number, item: MediaItem) => {
+  const choose = async (rank: number, picked: LookupTitle) => {
+    setBusy(true);
+
+    /*
+       One request, for the one title actually chosen.
+
+       A saved title has to carry an IMDb id — it is the key everything joins
+       on — and `/api/lookup` does not return one, because finding it is the
+       expensive half of `/api/search`. Resolving it here pays that cost once
+       on a click, instead of twenty-four times on every keystroke.
+    */
     let title;
     try {
-      title = toSavedTitle(item);
+      const res = await fetch(`/api/enrich?tmdb=${picked.tmdbId}&kind=${picked.kind}`);
+      if (!res.ok) throw new Error("Couldn't load that title.");
+      title = toSavedTitle((await res.json()) as MediaItem);
     } catch (err) {
+      setBusy(false);
       showToast(err instanceof Error ? err.message : "That title can't be saved.");
       return;
     }
 
-    setBusy(true);
     try {
       await setFavourite(kind, rank, title);
       /*
@@ -136,29 +149,57 @@ function TopFiveRow({
           return pick ? (
             <div
               key={rank}
-              className="group relative aspect-[2/3] overflow-hidden rounded-xl bg-surface-container"
+              className={`group relative aspect-[2/3] overflow-hidden rounded-xl bg-surface-container transition-shadow ${
+                active ? "ring-2 ring-primary" : ""
+              }`}
             >
               <PosterImage
                 src={pick.poster ?? metahubPoster(pick.imdbId)}
                 alt={pick.title}
                 className="h-full w-full object-cover"
               />
-              <span className="absolute left-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 font-label-md text-[12px] text-primary backdrop-blur-md">
+
+              {/*
+                 A filled slot is a button too.
+
+                 It had no click at all, so the only way to change a pick was a
+                 remove control that appeared on hover — invisible on a
+                 touchscreen and easy to miss anywhere else. Pressing the
+                 poster now opens the search on that slot, and choosing
+                 something replaces it, which is what the primary key
+                 (user_id, kind, rank) does anyway.
+              */}
+              <button
+                type="button"
+                onClick={() => setPicking(active ? null : rank)}
+                aria-label={`Replace ${pick.title} at number ${rank} in ${heading}`}
+                className="absolute inset-0 z-10 flex items-end justify-center p-2 opacity-0 transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100"
+              >
+                <span className="poster-overlay absolute inset-0" aria-hidden="true" />
+                <span className="relative flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 font-label-md text-[12px] text-white backdrop-blur-md">
+                  <Icon name="swap_horiz" className="text-[14px]" />
+                  Replace
+                </span>
+              </button>
+
+              <span className="pointer-events-none absolute left-1.5 top-1.5 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 font-label-md text-[12px] text-primary backdrop-blur-md">
                 {rank}
               </span>
+
+              {/*
+                 Always visible, not revealed on hover. There is no hover on a
+                 phone, and this is the control someone goes looking for when
+                 they want a pick gone.
+              */}
               <button
                 type="button"
                 onClick={() => void clear(rank)}
                 aria-label={`Remove ${pick.title} from ${heading}`}
-                className="absolute right-1.5 top-1.5 rounded-full bg-black/70 p-1.5 text-white opacity-0 backdrop-blur-md transition-all duration-200 hover:bg-error hover:text-on-error focus-visible:opacity-100 group-hover:opacity-100"
+                title={`Remove ${pick.title}`}
+                className="absolute right-1.5 top-1.5 z-20 rounded-full bg-black/70 p-1.5 text-white backdrop-blur-md transition-colors hover:bg-error hover:text-on-error"
               >
                 <Icon name="close" className="text-[16px]" />
               </button>
-              <div className="poster-overlay absolute inset-0 flex items-end p-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                <span className="truncate font-label-md text-[12px] text-on-surface">
-                  {pick.title}
-                </span>
-              </div>
             </div>
           ) : (
             <button
@@ -191,6 +232,7 @@ function TopFiveRow({
             <SlotSearch
               kind={kind}
               rank={picking}
+              replacing={picks?.find((p) => p.rank === picking)?.title}
               busy={busy}
               onPick={(item) => void choose(picking, item)}
             />
@@ -211,13 +253,16 @@ function TopFiveRow({
 function SlotSearch({
   kind,
   rank,
+  replacing,
   busy,
   onPick,
 }: {
   kind: MediaKind;
   rank: number;
+  /** The title currently in this slot, when the pick will replace one. */
+  replacing?: string;
   busy: boolean;
-  onPick: (item: MediaItem) => void;
+  onPick: (item: LookupTitle) => void;
 }) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -227,14 +272,34 @@ function SlotSearch({
     return () => clearTimeout(t);
   }, [query]);
 
-  const { data, loading } = useFetch<SearchResults>(
-    debounced.length >= 2 ? `/api/search?q=${encodeURIComponent(debounced)}` : null,
+  /*
+     `/api/lookup`, for the same reason Find Similar uses it: this list needs a
+     poster, a year and a kind, and `/api/search` was paying a TMDB detail
+     request plus a Cinemeta rating lookup per title to supply ratings nothing
+     here renders.
+
+     `toSavedTitle` needs an IMDb id, which lookup does not return — so the
+     pick is resolved through `/api/enrich` on click, which is one request for
+     the one title actually chosen instead of twenty-four for the ones that
+     were not.
+  */
+  const { data, loading } = useFetch<LookupPayload>(
+    debounced.length >= 2 ? `/api/lookup?q=${encodeURIComponent(debounced)}` : null,
   );
 
   const results = (data?.titles ?? []).filter((t) => t.kind === kind).slice(0, 12);
 
   return (
     <div className="mt-4 rounded-2xl border border-white/10 bg-surface-container/60 p-4">
+      <p className="mb-3 font-label-md text-label-md text-on-surface-variant">
+        {replacing ? (
+          <>
+            Replacing <span className="text-on-surface">{replacing}</span> at number {rank}
+          </>
+        ) : (
+          <>Choosing number {rank}</>
+        )}
+      </p>
       <label className="sr-only" htmlFor={`slot-${kind}-${rank}`}>
         Search for number {rank}
       </label>
@@ -263,7 +328,7 @@ function SlotSearch({
         <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-6">
           {results.map((item) => (
             <button
-              key={item.key}
+              key={`${item.kind}:${item.tmdbId}`}
               type="button"
               onClick={() => onPick(item)}
               disabled={busy}
