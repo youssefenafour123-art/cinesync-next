@@ -49,6 +49,13 @@ function TopFiveRow({
   const [picks, setPicks] = useState<Favourite[] | null>(null);
   const [picking, setPicking] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  /*
+     Which slot is under the pointer. Held here rather than left to
+     `group-hover:` because a class cannot spring, and because the button needs
+     its own press transform — which Tailwind would be fighting for if both
+     were setting one.
+  */
+  const [hovered, setHovered] = useState<number | null>(null);
 
   const load = useCallback(() => {
     let cancelled = false;
@@ -147,8 +154,11 @@ function TopFiveRow({
           }
 
           return pick ? (
-            <div
+            <motion.div
               key={rank}
+              layout
+              onHoverStart={() => setHovered(rank)}
+              onHoverEnd={() => setHovered((r) => (r === rank ? null : r))}
               className={`group relative aspect-[2/3] overflow-hidden rounded-xl bg-surface-container transition-shadow ${
                 active ? "ring-2 ring-primary" : ""
               }`}
@@ -195,16 +205,27 @@ function TopFiveRow({
                  fades in with the overlay above, and on a touchscreen the tap
                  that shows that overlay shows this too.
               */}
-              <button
+              <motion.button
                 type="button"
                 onClick={() => void clear(rank)}
                 aria-label={`Remove ${pick.title} from ${heading}`}
                 title={`Remove ${pick.title}`}
-                className="absolute right-1.5 top-1.5 z-20 rounded-full bg-black/60 p-1.5 text-white/80 opacity-0 backdrop-blur-md transition-all duration-200 hover:bg-error hover:text-on-error focus-visible:opacity-100 group-hover:opacity-100"
+                onHoverStart={() => setHovered(rank)}
+                onFocus={() => setHovered(rank)}
+                onBlur={() => setHovered((r) => (r === rank ? null : r))}
+                animate={
+                  hovered === rank
+                    ? { opacity: 1, scale: 1, y: 0 }
+                    : { opacity: 0, scale: 0.4, y: -6 }
+                }
+                whileHover={{ scale: 1.18 }}
+                whileTap={{ scale: 0.82 }}
+                transition={{ type: "spring", stiffness: 520, damping: 26 }}
+                className="absolute right-1.5 top-1.5 z-20 grid h-7 w-7 place-items-center rounded-full bg-black/55 text-white/90 ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-error hover:text-on-error hover:ring-error"
               >
-                <Icon name="close" className="text-[15px]" />
-              </button>
-            </div>
+                <Icon name="close" className="text-[14px]" />
+              </motion.button>
+            </motion.div>
           ) : (
             <button
               key={rank}

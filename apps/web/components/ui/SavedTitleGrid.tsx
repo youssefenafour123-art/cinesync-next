@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAppStore } from "@/store/useAppStore";
 import type { SavedTitle } from "@/lib/lists";
@@ -53,6 +54,19 @@ export function SavedTitleGrid({
 }: SavedTitleGridProps) {
   const openDetails = useAppStore((s) => s.openDetails);
 
+  /*
+     Which card is under the pointer, in React rather than in CSS.
+
+     `group-hover:` can only toggle a class, and a class cannot spring. Holding
+     it here lets the control arrive on a spring and leave on one, and lets the
+     button own its own press feedback — a transform Tailwind would be fighting
+     for if both were setting one.
+
+     Focus writes to the same value, so the control is reachable by keyboard
+     rather than being a button that exists only for a mouse.
+  */
+  const [active, setActive] = useState<string | null>(null);
+
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-6">
       <AnimatePresence initial={false}>
@@ -64,8 +78,14 @@ export function SavedTitleGrid({
               layout
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.94 }}
-              transition={{ duration: 0.25 }}
+              /*
+                 A removal should look like the title leaving, not like it
+                 blinking out. It drops back and fades while the rest of the
+                 grid closes the gap — `layout` above is what animates that
+                 reflow, and the two together are the whole effect.
+              */
+              exit={{ opacity: 0, scale: 0.82, y: 12, transition: { duration: 0.18 } }}
+              transition={{ type: "spring", stiffness: 420, damping: 34 }}
               onClick={open}
               role="button"
               tabIndex={0}
@@ -75,6 +95,8 @@ export function SavedTitleGrid({
                   open();
                 }
               }}
+              onHoverStart={() => setActive(t.imdbId)}
+              onHoverEnd={() => setActive((id) => (id === t.imdbId ? null : id))}
               className="group relative aspect-[2/3] cursor-pointer overflow-hidden rounded-xl bg-surface-container"
             >
               {/*
@@ -96,7 +118,7 @@ export function SavedTitleGrid({
               </div>
 
               {onRemove ? (
-                <button
+                <motion.button
                   type="button"
                   onClick={(e) => {
                     // The tile itself opens the title; without this the modal
@@ -107,10 +129,21 @@ export function SavedTitleGrid({
                   disabled={busy}
                   aria-label={removeLabel?.(t) ?? `Remove ${t.title}`}
                   title={removeLabel?.(t) ?? `Remove ${t.title}`}
-                  className="absolute right-2 top-2 rounded-full bg-black/70 p-2 text-white opacity-0 backdrop-blur-md transition-all duration-200 hover:bg-error hover:text-on-error focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-40"
+                  onFocus={() => setActive(t.imdbId)}
+                  onBlur={() => setActive((id) => (id === t.imdbId ? null : id))}
+                  // Rendered always so it can be tabbed to, revealed by state.
+                  animate={
+                    active === t.imdbId
+                      ? { opacity: 1, scale: 1, y: 0 }
+                      : { opacity: 0, scale: 0.4, y: -6 }
+                  }
+                  whileHover={{ scale: 1.18 }}
+                  whileTap={{ scale: 0.82 }}
+                  transition={{ type: "spring", stiffness: 520, damping: 26 }}
+                  className="absolute right-1.5 top-1.5 z-20 grid h-7 w-7 place-items-center rounded-full bg-black/55 text-white/90 ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-error hover:text-on-error hover:ring-error"
                 >
-                  <Icon name={removeIcon} className="text-[18px]" />
-                </button>
+                  <Icon name={removeIcon} className="text-[14px]" />
+                </motion.button>
               ) : null}
             </motion.div>
           );
