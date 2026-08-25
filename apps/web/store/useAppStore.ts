@@ -33,6 +33,16 @@ export type TabId = (typeof TABS)[number]["id"];
 interface AppState {
   tab: TabId;
   setTab: (tab: TabId) => void;
+  /*
+     The profile is a screen, not a tab.
+
+     It is reached from the account icon and deliberately absent from both nav
+     rows, so it cannot be a `TabId` — `TABS` is what those rows render, and
+     adding a ninth entry to hide it again would put the exception in two
+     places. A flag beside `tab` keeps the nav honest: it lists what it lists.
+  */
+  profileOpen: boolean;
+  setProfileOpen: (open: boolean) => void;
 
   /** Item shown in the details modal; null when closed. */
   details: MediaItem | null;
@@ -88,7 +98,11 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set) => ({
   tab: "discover",
-  setTab: (tab) => set({ tab }),
+  // Choosing any tab leaves the profile, which is what makes the nav row work
+  // as a way back out of it.
+  setTab: (tab) => set({ tab, profileOpen: false }),
+  profileOpen: false,
+  setProfileOpen: (profileOpen) => set({ profileOpen }),
 
   details: null,
   openDetails: (item) => set({ details: item }),

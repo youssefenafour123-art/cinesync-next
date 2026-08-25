@@ -22,6 +22,8 @@ export function TopNav() {
   const setTab = useAppStore((s) => s.setTab);
   const warm = useTabHoverPrefetch();
   const setAuthOpen = useAppStore((s) => s.setAuthOpen);
+  const profileOpen = useAppStore((s) => s.profileOpen);
+  const setProfileOpen = useAppStore((s) => s.setProfileOpen);
   const { user, username, ready } = useSession();
   const setSearchOpen = useAppStore((s) => s.setSearchOpen);
   const navRef = useRef<HTMLElement>(null);
@@ -109,7 +111,7 @@ export function TopNav() {
               key={t.id}
               id={t.id}
               label={t.label}
-              active={tab === t.id}
+              active={!profileOpen && tab === t.id}
               onSelect={setTab}
               onIntent={warm}
             />
@@ -145,11 +147,20 @@ export function TopNav() {
           {!ready ? (
             <span className="h-6 w-6" aria-hidden="true" />
           ) : user ? (
+            /*
+               Signed in, this opens the profile rather than the auth panel.
+               The panel's remaining job — change password, sign out — moved to
+               an "Account" button on the profile itself, because what someone
+               clicking their own name expects to see is their page, not a
+               form.
+            */
             <button
               type="button"
-              aria-label={`Signed in as ${username ?? "your account"}`}
-              onClick={() => setAuthOpen(true)}
-              className="flex items-center gap-2 text-primary transition-opacity hover:opacity-80"
+              aria-label={`Your profile, ${username ?? "signed in"}`}
+              onClick={() => setProfileOpen(true)}
+              className={`flex items-center gap-2 transition-opacity hover:opacity-80 ${
+                profileOpen ? "text-primary" : "text-primary/80"
+              }`}
             >
               <Icon name="account_circle" fill />
               <span className="hidden font-label-md text-label-md sm:inline">{username}</span>

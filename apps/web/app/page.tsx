@@ -20,6 +20,7 @@ import { CalendarTab } from "@/components/tabs/CalendarTab";
 import { TrackerTab } from "@/components/tabs/TrackerTab";
 import { LibraryTab } from "@/components/tabs/LibraryTab";
 import { SettingsTab } from "@/components/tabs/SettingsTab";
+import { ProfileTab } from "@/components/tabs/ProfileTab";
 
 import { DetailsModal } from "@/components/modals/DetailsModal";
 import { TrailerModal } from "@/components/modals/TrailerModal";
@@ -32,6 +33,13 @@ import { QuoteTicker } from "@/components/ui/QuoteTicker";
 
 export default function Home() {
   const tab = useAppStore((s) => s.tab);
+  const profileOpen = useAppStore((s) => s.profileOpen);
+  /*
+     What is actually on screen. The profile sits over the tab rather than
+     replacing it, so leaving the profile returns to whatever tab was open
+     underneath instead of resetting to Discover.
+  */
+  const screen = profileOpen ? "profile" : tab;
   const details = useAppStore((s) => s.details);
   const trailerKey = useAppStore((s) => s.trailerKey);
   const trailerLoading = useAppStore((s) => s.trailerLoading);
@@ -95,10 +103,10 @@ export default function Home() {
     document.documentElement.dataset.motion = motionPreference;
   }, [motionPreference]);
 
-  // Each tab starts at the top rather than inheriting the previous scroll.
+  // Each screen starts at the top rather than inheriting the previous scroll.
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
-  }, [tab]);
+  }, [screen]);
 
   return (
     <>
@@ -115,19 +123,20 @@ export default function Home() {
           in, which looks the same and can't get stuck.
         */}
         <motion.div
-          key={tab}
+          key={screen}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.28, ease: "easeOut" }}
         >
-          {tab === "discover" && <DiscoverTab onWall={onWall} />}
-          {tab === "movies" && <MoviesTab />}
-          {tab === "anime" && <AnimeTab />}
-          {tab === "arabic" && <ArabicTab />}
-          {tab === "tracker" && <TrackerTab />}
-          {tab === "calendar" && <CalendarTab />}
-          {tab === "library" && <LibraryTab />}
-          {tab === "settings" && <SettingsTab />}
+          {screen === "profile" && <ProfileTab />}
+          {screen === "discover" && <DiscoverTab onWall={onWall} />}
+          {screen === "movies" && <MoviesTab />}
+          {screen === "anime" && <AnimeTab />}
+          {screen === "arabic" && <ArabicTab />}
+          {screen === "tracker" && <TrackerTab />}
+          {screen === "calendar" && <CalendarTab />}
+          {screen === "library" && <LibraryTab />}
+          {screen === "settings" && <SettingsTab />}
         </motion.div>
       </main>
 

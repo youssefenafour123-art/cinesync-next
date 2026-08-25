@@ -8,6 +8,7 @@ import { Icon } from "@/components/ui/Icon";
 /** Mobile tab bar. Same five destinations as the legacy bottom nav, plus Settings. */
 export function BottomNav() {
   const tab = useAppStore((s) => s.tab);
+  const profileOpen = useAppStore((s) => s.profileOpen);
   const setTab = useAppStore((s) => s.setTab);
   const warm = useTabHoverPrefetch();
 
@@ -17,7 +18,7 @@ export function BottomNav() {
       aria-label="Primary mobile"
     >
       {TABS.map((t) => {
-        const active = tab === t.id;
+        const active = !profileOpen && tab === t.id;
         return (
           <motion.button
             key={t.id}
