@@ -187,18 +187,22 @@ function TopFiveRow({
               </span>
 
               {/*
-                 Always visible, not revealed on hover. There is no hover on a
-                 phone, and this is the control someone goes looking for when
-                 they want a pick gone.
+                 Revealed with the Replace overlay, not sitting on the poster.
+
+                 A permanent cross on all ten covers reads as clutter — the row
+                 is a display of what someone chose, and a delete button on
+                 every one of them makes it look like a management screen. It
+                 fades in with the overlay above, and on a touchscreen the tap
+                 that shows that overlay shows this too.
               */}
               <button
                 type="button"
                 onClick={() => void clear(rank)}
                 aria-label={`Remove ${pick.title} from ${heading}`}
                 title={`Remove ${pick.title}`}
-                className="absolute right-1.5 top-1.5 z-20 rounded-full bg-black/70 p-1.5 text-white backdrop-blur-md transition-colors hover:bg-error hover:text-on-error"
+                className="absolute right-1.5 top-1.5 z-20 rounded-full bg-black/60 p-1.5 text-white/80 opacity-0 backdrop-blur-md transition-all duration-200 hover:bg-error hover:text-on-error focus-visible:opacity-100 group-hover:opacity-100"
               >
-                <Icon name="close" className="text-[16px]" />
+                <Icon name="close" className="text-[15px]" />
               </button>
             </div>
           ) : (
