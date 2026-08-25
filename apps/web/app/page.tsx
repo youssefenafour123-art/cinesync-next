@@ -24,6 +24,7 @@ import { SettingsTab } from "@/components/tabs/SettingsTab";
 import { DetailsModal } from "@/components/modals/DetailsModal";
 import { TrailerModal } from "@/components/modals/TrailerModal";
 import { AddSourceModal } from "@/components/modals/AddSourceModal";
+import { AuthModal } from "@/components/modals/AuthModal";
 import { SearchModal } from "@/components/modals/SearchModal";
 import { PersonModal } from "@/components/modals/PersonModal";
 import { Toast } from "@/components/ui/Toast";
@@ -35,6 +36,8 @@ export default function Home() {
   const trailerKey = useAppStore((s) => s.trailerKey);
   const trailerLoading = useAppStore((s) => s.trailerLoading);
   const addSourceOpen = useAppStore((s) => s.addSourceOpen);
+  const authOpen = useAppStore((s) => s.authOpen);
+  const setAuthOpen = useAppStore((s) => s.setAuthOpen);
   const searchOpen = useAppStore((s) => s.searchOpen);
   const personId = useAppStore((s) => s.personId);
 
@@ -119,6 +122,10 @@ export default function Home() {
       </AnimatePresence>
 
       <AnimatePresence>{addSourceOpen ? <AddSourceModal key="source" /> : null}</AnimatePresence>
+
+      <AnimatePresence>
+        {authOpen ? <AuthModal key="auth" onClose={() => setAuthOpen(false)} /> : null}
+      </AnimatePresence>
 
       <AnimatePresence>{searchOpen ? <SearchModal key="search" /> : null}</AnimatePresence>
 

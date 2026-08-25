@@ -141,7 +141,11 @@ async function run() {
     await sleep(2000);
     await page.evaluate(() => {
       localStorage.removeItem('cineSyncSources');
-      document.querySelector('[aria-label="Manage connected sources"]').click();
+      // The top-nav account icon now opens sign-in, which is what an account
+      // icon should do. Sources are reached from the Library tab's own button.
+      [...document.querySelectorAll('button')]
+        .find((b) => /add source/i.test(b.textContent))
+        ?.click();
     });
     await sleep(1200);
     // CSV upload sits behind a disclosure — URL import is the primary path.
@@ -178,9 +182,19 @@ async function run() {
   });
   await sleep(1500);
   const syncText = await page.evaluate(() => document.querySelector('main').innerText);
+  /*
+     Either wording passes. `useSync` tailors the reason three ways and which
+     one appears depends on whether the CSV step above ran: with a list
+     imported it is "Connect at least one Stremio account first"; on a
+     genuinely empty profile it is "Connect a Stremio account and add an IMDb
+     list first". Asserting only the former meant this failed whenever the
+     suite ran without `CSV` set — testing the fixture rather than the app.
+     What matters is that sync refuses, and says why.
+  */
+  const BLOCKED_REASON = /Connect (a|at least one) Stremio account/;
   ok('Sync blocks with a reason when no Stremio account is connected',
-    /Nothing to sync/.test(syncText) && /Connect at least one Stremio account/.test(syncText),
-    syncText.split('\n').find((l) => /Connect at least one/.test(l)) ?? 'not found');
+    /Nothing to sync/.test(syncText) && BLOCKED_REASON.test(syncText),
+    syncText.split('\n').find((l) => BLOCKED_REASON.test(l)) ?? 'not found');
 
   ok('No console errors or page exceptions during the run', errors.length === 0,
     errors.slice(0, 3).join(' || ') || 'none');

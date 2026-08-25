@@ -75,6 +75,24 @@ function load<T>(url: string): Promise<T> {
 }
 
 /**
+ * Drops everything cached this session.
+ *
+ * The cache is keyed by URL and nothing else, which is exactly right while
+ * every route returns the same catalogue to everybody. It stops being right
+ * the moment a URL's answer depends on who is asking: sign out and back in as
+ * someone else in the same tab, and the first account's responses are still
+ * sitting in this map, ready to be served on the first frame.
+ *
+ * So authentication changes clear it — see `lib/auth.ts`. `inflight` goes too:
+ * a request that was already in the air belongs to the previous session, and
+ * letting it settle would write that answer straight back into the cache.
+ */
+export function clearFetchCache(): void {
+  cache.clear();
+  inflight.clear();
+}
+
+/**
  * The shared loader, for the one place that needs a payload without rendering
  * it — `AmbientBackground` pulls the poster wall out of the Discover payload
  * whichever tab it happens to mount on.

@@ -1132,6 +1132,71 @@ body {
   }
 }
 
+/* ---- Auth poster marquee ----------------------------------------------- *
+   Three columns of poster art sliding behind the sign-in panel.
+
+   Transform only, and only on the track — never on the 21 images, which is the
+   mistake the background wall made (a filter and a 50px shadow per image, 192
+   of them). Each column runs at its own duration so the three never lock into
+   a visible rhythm, and `is-reverse` sends the middle one the other way.
+ * ------------------------------------------------------------------------ */
+.auth-marquee {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  padding: 14px;
+  overflow: hidden;
+}
+
+.auth-marquee-col {
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-marquee-track {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation-name: cs-auth-drift;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+.auth-marquee-track.is-reverse {
+  animation-direction: reverse;
+}
+
+.auth-marquee-track img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #101010;
+}
+
+/* -50% because the track holds the same posters twice: one full pass of the
+   first copy lands exactly where the second began. */
+@keyframes cs-auth-drift {
+  to {
+    transform: translate3d(0, -50%, 0);
+  }
+}
+
+/* Reads as artwork behind the words rather than as content competing with
+   them. Sits above the columns and below the panel's own children. */
+.auth-marquee-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to top, var(--color-surface) 4%, transparent 55%),
+    linear-gradient(to right, var(--color-surface) 0%, transparent 22%),
+    rgba(8, 10, 10, 0.55);
+}
+
 /* ---- Misc ---- */
 .pulsing-text {
   animation: cs-pulse 1.6s ease-in-out infinite;

@@ -20,7 +20,7 @@ export function TopNav() {
   const tab = useAppStore((s) => s.tab);
   const setTab = useAppStore((s) => s.setTab);
   const warm = useTabHoverPrefetch();
-  const setAddSourceOpen = useAppStore((s) => s.setAddSourceOpen);
+  const setAuthOpen = useAppStore((s) => s.setAuthOpen);
   const setSearchOpen = useAppStore((s) => s.setSearchOpen);
   const navRef = useRef<HTMLElement>(null);
 
@@ -134,10 +134,13 @@ export function TopNav() {
           >
             <Icon name="notifications" />
           </button>
+          {/* An account icon that opened the *source* list was the closest
+              thing this app had to a sign-in, and it meant something else.
+              Sources are still reachable from the Library tab's own button. */}
           <button
             type="button"
-            aria-label="Manage connected sources"
-            onClick={() => setAddSourceOpen(true)}
+            aria-label="Sign in to CineSync"
+            onClick={() => setAuthOpen(true)}
             className="text-on-surface-variant transition-colors hover:text-primary"
           >
             <Icon name="account_circle" />

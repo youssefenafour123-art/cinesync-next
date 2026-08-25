@@ -50,6 +50,10 @@ interface AppState {
   addSourceOpen: boolean;
   setAddSourceOpen: (open: boolean) => void;
 
+  /** Sign-in / sign-up modal. */
+  authOpen: boolean;
+  setAuthOpen: (open: boolean) => void;
+
   /** TMDB person id shown in the person modal; null when closed. */
   personId: number | null;
   openPerson: (id: number) => void;
@@ -98,6 +102,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   addSourceOpen: false,
   setAddSourceOpen: (addSourceOpen) => set({ addSourceOpen }),
+
+  authOpen: false,
+  setAuthOpen: (authOpen) => set({ authOpen }),
 
   personId: null,
   // A profile opened from a film's credits stacks *over* that film rather than
