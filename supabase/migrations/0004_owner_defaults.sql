@@ -15,14 +15,22 @@
 --
 -- `auth.uid()` as the default makes the honest case automatic and leaves the
 -- policy checking a value the client no longer has a reason to send.
+--
+-- Bare `auth.uid()`, not `(select auth.uid())`. The parenthesised form is the
+-- right one inside a policy, where it makes the planner evaluate the call once
+-- per statement instead of once per row — but a DEFAULT expression may not
+-- contain a subquery at all, and the first version of this migration was
+-- refused with "cannot use subquery in DEFAULT expression". A default is
+-- evaluated once per inserted row regardless, so there is nothing the wrapper
+-- would have bought here.
 
 alter table public.lists
-  alter column user_id set default (select auth.uid());
+  alter column user_id set default auth.uid();
 
 alter table public.follows
-  alter column follower_id set default (select auth.uid());
+  alter column follower_id set default auth.uid();
 
 -- `favorites.user_id` gets the same treatment for consistency, even though its
 -- caller does pass one — there is no reason for two conventions.
 alter table public.favorites
-  alter column user_id set default (select auth.uid());
+  alter column user_id set default auth.uid();

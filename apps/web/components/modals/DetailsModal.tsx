@@ -5,6 +5,7 @@ import type { CreditedPerson, MediaItem } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 import { useLibraryActions } from "@/lib/useLibraryActions";
 import { useWatchlist } from "@/lib/useWatchlist";
+import { AddToList } from "@/components/ui/AddToList";
 import { useTrailer } from "@/lib/useTrailer";
 import { PosterImage } from "@/components/ui/PosterImage";
 import { ScoresPanel } from "@/components/ui/ScoresPanel";
@@ -523,6 +524,19 @@ function ActionButtons({
           {saved ? "On your watchlist" : "Add to watchlist"}
         </button>
       ) : null}
+
+      {/*
+         Below the watchlist button, not beside it. The watchlist is one list
+         with one answer, so it stays a single press; everything else is a
+         choice among lists, and a choice belongs behind a disclosure rather
+         than in the row of primary actions.
+      */}
+      {/*
+         Keyed by the title so opening a different one starts this over. The
+         panel caches which lists hold *this* film; carrying that across a
+         change of title would tick lists that hold the previous one.
+      */}
+      <AddToList key={item.imdbId ?? item.key} item={item} />
     </>
   );
 }

@@ -151,6 +151,30 @@ export async function addToList(listId: string, title: SavedTitle): Promise<void
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Which of the caller's lists already hold this title.
+ *
+ * One request rather than one per list, and scoped to ids the caller passed:
+ * `list_items` is readable for every list the visibility policy allows, so an
+ * unscoped query would also match somebody else's public list that happens to
+ * contain the same film.
+ */
+export async function fetchListsHolding(
+  imdbId: string,
+  listIds: string[],
+): Promise<Set<string>> {
+  if (listIds.length === 0) return new Set();
+
+  const { data, error } = await supabaseBrowser()
+    .from("list_items")
+    .select("list_id")
+    .eq("imdb_id", imdbId)
+    .in("list_id", listIds);
+
+  if (error) throw new Error(error.message);
+  return new Set((data ?? []).map((r) => (r as { list_id: string }).list_id));
+}
+
 export async function removeFromList(listId: string, imdbId: string): Promise<void> {
   const { error } = await supabaseBrowser()
     .from("list_items")

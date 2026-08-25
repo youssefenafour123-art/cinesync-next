@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { MediaItem } from "./types";
 import { useSession } from "./useSession";
 import { useAppStore } from "@/store/useAppStore";
+import type { SavedTitle } from "./lists";
 import { addToList, fetchListItems, fetchWatchlistId, removeFromList, toSavedTitle } from "./lists";
 
 /**
@@ -16,6 +17,14 @@ import { addToList, fetchListItems, fetchWatchlistId, removeFromList, toSavedTit
  * modal opened from it.
  */
 let watchlistId: string | null = null;
+/*
+   The same list twice, on purpose. The Library tab renders `items` in order;
+   every poster badge in the app asks `saved` whether one id is in there. A
+   `some()` over the array would turn a shelf of forty posters into forty
+   linear scans, and rebuilding the set inside `has()` would allocate on every
+   render — so they are built together and only ever written by `setItems`.
+*/
+let items: SavedTitle[] = [];
 let saved = new Set<string>();
 let loaded = false;
 let inFlight: Promise<void> | null = null;
@@ -25,13 +34,19 @@ function publish() {
   for (const fn of subscribers) fn();
 }
 
+/** The only thing that writes the list. Keeps the two views of it in step. */
+function setItems(next: SavedTitle[]): void {
+  items = next;
+  saved = new Set(next.map((t) => t.imdbId));
+}
+
 async function load(): Promise<void> {
   if (inFlight) return inFlight;
   inFlight = (async () => {
     try {
       const id = await fetchWatchlistId();
       watchlistId = id;
-      saved = new Set(id ? (await fetchListItems(id)).map((t) => t.imdbId) : []);
+      setItems(id ? await fetchListItems(id) : []);
       loaded = true;
       publish();
     } catch {
@@ -49,7 +64,7 @@ async function load(): Promise<void> {
 /** Forget everything — a different account has a different watchlist. */
 export function resetWatchlist(): void {
   watchlistId = null;
-  saved = new Set();
+  setItems([]);
   loaded = false;
   publish();
 }
@@ -110,20 +125,18 @@ export function useWatchlist() {
          mean putting the badge back if the write is refused, which that older
          path never had to do.
       */
-      const next = new Set(saved);
-      if (adding) next.add(title.imdbId);
-      else next.delete(title.imdbId);
-      saved = next;
+      // Kept so a refused write can put the list back exactly as it was,
+      // order included — newest first, which is how it comes back from the
+      // server and how the Library tab reads it.
+      const before = items;
+      setItems(adding ? [title, ...items] : items.filter((t) => t.imdbId !== title.imdbId));
       publish();
 
       try {
         if (adding) await addToList(watchlistId, title);
         else await removeFromList(watchlistId, title.imdbId);
       } catch (err) {
-        const revert = new Set(saved);
-        if (adding) revert.delete(title.imdbId);
-        else revert.add(title.imdbId);
-        saved = revert;
+        setItems(before);
         publish();
         showToast(err instanceof Error ? err.message : "That didn't save.");
       } finally {
@@ -133,5 +146,5 @@ export function useWatchlist() {
     [user, showToast],
   );
 
-  return { has, toggle, pending, ready: loaded, signedIn: Boolean(user) };
+  return { items, has, toggle, pending, ready: loaded, signedIn: Boolean(user) };
 }

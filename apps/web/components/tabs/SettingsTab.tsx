@@ -9,6 +9,8 @@ import {
   type MotionPreference,
 } from "@/lib/useReducedMotion";
 import { Icon } from "@/components/ui/Icon";
+import { TopFive } from "@/components/ui/TopFive";
+import { useSession } from "@/lib/useSession";
 
 const SECTIONS = [
   { id: "profile", label: "Profile", icon: "person" },
@@ -16,6 +18,16 @@ const SECTIONS = [
   { id: "appearance", label: "Appearance", icon: "palette" },
   { id: "api", label: "API Integrations", icon: "api" },
 ] as const;
+
+/**
+ * The top fives sit between Profile and Sync, and only when signed in.
+ *
+ * Added to the nav rather than declared in `SECTIONS`, because that array is
+ * `as const` and every other entry is unconditional — a signed-out visitor
+ * being offered a jump link to a panel that renders nothing is the sort of
+ * dead control this tab was rebuilt to remove.
+ */
+const TOP_FIVE_SECTION = { id: "topfive", label: "Top Fives", icon: "star" } as const;
 
 /**
  * Settings.
@@ -29,7 +41,12 @@ export function SettingsTab() {
   const updateSettings = useSourcesStore((s) => s.updateSettings);
   const sources = useSourcesStore((s) => s.sources);
   const showToast = useAppStore((s) => s.showToast);
+  const { user } = useSession();
   const [active, setActive] = useState<string>("profile");
+
+  const sections: readonly { id: string; label: string; icon: string }[] = user
+    ? [SECTIONS[0], TOP_FIVE_SECTION, ...SECTIONS.slice(1)]
+    : SECTIONS;
 
   const stremioCount = sources.filter((s) => s.type === "stremio").length;
   const listCount = sources.filter((s) => s.type === "imdb_csv").length;
@@ -53,7 +70,7 @@ export function SettingsTab() {
       <div className="flex flex-col gap-gutter md:flex-row">
         <aside className="w-full shrink-0 md:w-64">
           <nav className="flex flex-col gap-1 md:sticky md:top-28">
-            {SECTIONS.map((s) => (
+            {sections.map((s) => (
               <button
                 key={s.id}
                 type="button"
@@ -112,6 +129,19 @@ export function SettingsTab() {
               />
             </div>
           </section>
+
+          {/* ---- Top fives ---- */}
+          {user ? (
+            <section id="settings-topfive" className="glass-panel scroll-mt-28 rounded-lg p-6 md:p-8">
+              <h3 className="mb-2 border-b border-white/10 pb-4 font-title-lg text-title-lg text-on-surface">
+                Top Fives
+              </h3>
+              <p className="mb-6 font-body-md text-body-md text-on-surface-variant">
+                The headline of your profile. Anyone who finds you by username can see these.
+              </p>
+              <TopFive />
+            </section>
+          ) : null}
 
           {/* ---- Sync ---- */}
           <section id="settings-sync" className="glass-panel scroll-mt-28 rounded-lg p-6 md:p-8">
