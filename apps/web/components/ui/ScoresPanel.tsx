@@ -87,7 +87,16 @@ export function ScoresPanel({
             </blockquote>
           ) : null}
         </>
-      ) : data.omdbConfigured === false ? (
+      ) : data.omdbConfigured === false && process.env.NODE_ENV !== "production" ? (
+        /*
+           A note for whoever is running this locally, and only for them.
+
+           In production it was showing to every visitor on every title whose
+           scores are missing — an instruction to edit a `.env.local` they have
+           no access to, on a machine that isn't theirs. `NODE_ENV` is inlined
+           at build time, so this whole branch is dropped from the deployed
+           bundle rather than merely hidden.
+        */
         <p className="mb-6 rounded-DEFAULT border border-white/10 bg-surface-container/40 p-3 font-body-md text-[13px] text-on-surface-variant">
           Add <code className="text-primary">OMDB_API_KEY</code> to{" "}
           <code className="text-primary">.env.local</code> for live Rotten Tomatoes and Metacritic
