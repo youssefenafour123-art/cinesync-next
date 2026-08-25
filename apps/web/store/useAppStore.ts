@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { LibrarySnapshot, WatchedTitle } from "@/lib/stremio";
+import type { LibraryEntry, LibrarySnapshot, WatchedTitle } from "@/lib/stremio";
 import type { MediaItem } from "@/lib/types";
 
 /**
@@ -74,6 +74,8 @@ interface AppState {
 
   /** IMDb IDs currently in a connected library — drives the "In Library" badge. */
   libraryIds: Set<string>;
+  /** The library itself — titles and posters, for rendering it. */
+  libraryItems: LibraryEntry[];
   /**
    * Every IMDb ID a connected library has ever held, deletions included.
    * Sync reads this so a title the user removed in Stremio is not written back.
@@ -131,16 +133,27 @@ export const useAppStore = create<AppState>((set) => ({
   setSearchOpen: (searchOpen) => set({ searchOpen }),
 
   libraryIds: new Set<string>(),
+  libraryItems: [],
   knownLibraryIds: new Set<string>(),
   libraryLoaded: false,
   lastWatched: null,
   setLibrary: (snapshot) =>
-    set({
+    /*
+       Absent means "not recomputed", not "empty".
+
+       `useSync` calls this with only the two sets after a sync run, so the
+       previous form — `snapshot.lastWatched ?? null` — silently cleared the
+       last-played title every time anyone synced, taking the Because You
+       Watched rail with it. The same omission would now also empty the
+       library grid. What a caller does not supply, it does not touch.
+    */
+    set((s) => ({
       libraryIds: snapshot.inLibrary,
       knownLibraryIds: snapshot.known,
       libraryLoaded: true,
-      lastWatched: snapshot.lastWatched ?? null,
-    }),
+      lastWatched: snapshot.lastWatched ?? s.lastWatched,
+      libraryItems: snapshot.items ?? s.libraryItems,
+    })),
   markInLibrary: (id) =>
     set((s) => {
       const libraryIds = new Set(s.libraryIds);
@@ -161,7 +174,9 @@ export const useAppStore = create<AppState>((set) => ({
     set((s) => {
       const libraryIds = new Set(s.libraryIds);
       libraryIds.delete(id);
-      return { libraryIds };
+      // Out of the grid as well as out of the badge set, so a removal is
+      // visible immediately rather than at the next refresh.
+      return { libraryIds, libraryItems: s.libraryItems.filter((e) => e.imdbId !== id) };
     }),
 
   toast: null,

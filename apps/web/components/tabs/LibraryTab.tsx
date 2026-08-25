@@ -8,6 +8,7 @@ import { useSync } from "@/lib/useSync";
 import { useLibraryRefresh } from "@/lib/useLibrarySync";
 import { useLibraryActions } from "@/lib/useLibraryActions";
 import { ListsSection, WatchlistSection } from "@/components/library/SavedSections";
+import { StremioLibrary } from "@/components/library/StremioLibrary";
 import { metahubPoster } from "@/lib/stremio";
 import { Icon } from "@/components/ui/Icon";
 import { PosterImage } from "@/components/ui/PosterImage";
@@ -53,6 +54,8 @@ export function LibraryTab() {
 
       <WatchlistSection />
       <ListsSection />
+
+      <StremioLibrary />
 
       {/* ---- Sync ---- */}
       <section className="glass-panel mb-8 rounded-lg p-6 md:p-8">

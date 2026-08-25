@@ -62,11 +62,32 @@ export interface WatchedTitle {
  * row Stremio still stores for it, deletions included. They are kept apart
  * because they answer different questions — see `fetchLibrarySnapshot`.
  */
+/**
+ * One title as it sits in a Stremio library.
+ *
+ * The snapshot used to reduce every row to an id, which is all a badge needs
+ * and useless for showing someone their library. The name and the poster were
+ * in the response the whole time and were being thrown away.
+ */
+export interface LibraryEntry {
+  imdbId: string;
+  title: string;
+  kind: MediaKind;
+  poster?: string;
+}
+
 export interface LibrarySnapshot {
   inLibrary: Set<string>;
   known: Set<string>;
   /** The most recently played row, if the account has ever played anything. */
   lastWatched?: WatchedTitle;
+  /**
+   * Everything in the library proper, for rendering it.
+   *
+   * Optional so a caller that only recomputes membership — `useSync` does —
+   * can leave it alone rather than clearing it by omission.
+   */
+  items?: LibraryEntry[];
 }
 
 export function emptySnapshot(): LibrarySnapshot {
@@ -82,7 +103,25 @@ export function mergeSnapshots(snapshots: LibrarySnapshot[]): LibrarySnapshot {
     if (snap.lastWatched && (!merged.lastWatched || snap.lastWatched.watchedAt > merged.lastWatched.watchedAt)) {
       merged.lastWatched = snap.lastWatched;
     }
+
+    /*
+       Deduplicated by id, first account wins.
+
+       Two connected accounts commonly hold the same film, and the entry is
+       only a poster and a title — whichever copy is shown is the same title.
+       Keeping both would render it twice under the same React key.
+    */
+    for (const entry of snap.items ?? []) {
+      (merged.items ??= []).push(entry);
+    }
   }
+
+  if (merged.items) {
+    const seen = new Set<string>();
+    merged.items = merged.items.filter((e) => !seen.has(e.imdbId) && seen.add(e.imdbId));
+    merged.items.sort((a, b) => a.title.localeCompare(b.title));
+  }
+
   return merged;
 }
 
@@ -177,7 +216,18 @@ export async function fetchLibrarySnapshot(authKey: string): Promise<LibrarySnap
       // `temp` rows are the ones Stremio creates just from pressing play; they
       // carry `removed: true` until the title is explicitly added, so the
       // `removed` check covers them on its own.
-      if (row.removed !== true) snapshot.inLibrary.add(id);
+      if (row.removed !== true) {
+        snapshot.inLibrary.add(id);
+
+        // Same row, same loop, no extra request — the name and poster are
+        // right here, and this is the only place they exist.
+        (snapshot.items ??= []).push({
+          imdbId: id,
+          title: row.name || id,
+          kind: row.type === "series" ? "series" : "movie",
+          poster: row.poster || undefined,
+        });
+      }
 
       /*
          Watch state, read from the same rows rather than a second request.
