@@ -94,7 +94,12 @@ export function UserProfileModal({ userId }: { userId: string }) {
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <Icon name="account_circle" fill className="text-[56px] text-primary" />
+                <Icon
+                  name="account_circle"
+                  fill
+                  className="text-primary"
+                  style={{ fontSize: 56 }}
+                />
               )}
             </span>
 
