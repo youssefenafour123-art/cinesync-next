@@ -24,25 +24,37 @@ const DEBOUNCE_MS = 350;
  * is (user_id, kind, rank), so dropping a title into slot 3 replaces whatever
  * was in slot 3. The UI is drawn as five numbered holes rather than as a list
  * you append to, so that what the database does is what the screen shows.
+ *
+ * `userId` names whose top fives these are. Without it they are the signed-in
+ * account's and editable; with someone else's id the same rows render as a
+ * display — `favorites` is readable by everyone by policy, which is what makes
+ * a top five the headline of a profile rather than a private note, and the
+ * write policies would refuse anything this UI offered anyway.
  */
-export function TopFive() {
+export function TopFive({ userId }: { userId?: string } = {}) {
   const { user } = useSession();
-  if (!user) return null;
+  const id = userId ?? user?.id;
+  if (!id) return null;
+
+  const editable = id === user?.id;
 
   return (
     <div className="space-y-8">
-      <TopFiveRow userId={user.id} kind="movie" heading="Top 5 Films" />
-      <TopFiveRow userId={user.id} kind="series" heading="Top 5 Shows" />
+      <TopFiveRow userId={id} editable={editable} kind="movie" heading="Top 5 Films" />
+      <TopFiveRow userId={id} editable={editable} kind="series" heading="Top 5 Shows" />
     </div>
   );
 }
 
 function TopFiveRow({
   userId,
+  editable,
   kind,
   heading,
 }: {
   userId: string;
+  /** False on someone else's profile: the row displays, it does not offer. */
+  editable: boolean;
   kind: MediaKind;
   heading: string;
 }) {
@@ -133,7 +145,7 @@ function TopFiveRow({
     <div>
       <div className="mb-4 flex items-center justify-between gap-4">
         <h4 className="font-title-lg text-[17px] text-on-surface">{heading}</h4>
-        {picking !== null ? (
+        {editable && picking !== null ? (
           <button
             type="button"
             onClick={() => setPicking(null)}
@@ -194,29 +206,43 @@ function TopFiveRow({
                  from reaching the tile underneath.
               */}
               <span
-                className="poster-overlay pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100"
+                className="poster-overlay pointer-events-none absolute inset-0 flex items-end p-3 opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100"
                 aria-hidden="true"
-              />
-
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPicking(active ? null : rank);
-                }}
-                aria-label={`Replace ${pick.title} at number ${rank} in ${heading}`}
-                /*
-                   The pill *is* the button — not a full-width strip with a pill
-                   centred in it. Laid out that way, the button's own padding
-                   made the bottom 32px of every cover, edge to edge, an
-                   invisible Replace target, so a click low on the poster opened
-                   the search instead of the title.
-                */
-                className="absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-white/15 px-3 py-1 font-label-md text-[12px] text-white opacity-0 backdrop-blur-md transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100"
               >
-                <Icon name="swap_horiz" className="text-[14px]" />
-                Replace
-              </button>
+                {/*
+                   The name, but only where nothing else is using that corner.
+                   On your own row the Replace pill sits here; on someone
+                   else's there is nothing to press, and a poster you may not
+                   recognise deserves to say what it is.
+                */}
+                {!editable ? (
+                  <span className="truncate font-title-lg text-[13px] text-on-surface">
+                    {pick.title}
+                  </span>
+                ) : null}
+              </span>
+
+              {editable ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPicking(active ? null : rank);
+                  }}
+                  aria-label={`Replace ${pick.title} at number ${rank} in ${heading}`}
+                  /*
+                     The pill *is* the button — not a full-width strip with a pill
+                     centred in it. Laid out that way, the button's own padding
+                     made the bottom 32px of every cover, edge to edge, an
+                     invisible Replace target, so a click low on the poster opened
+                     the search instead of the title.
+                  */
+                  className="absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-white/15 px-3 py-1 font-label-md text-[12px] text-white opacity-0 backdrop-blur-md transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <Icon name="swap_horiz" className="text-[14px]" />
+                  Replace
+                </button>
+              ) : null}
 
               <span className="pointer-events-none absolute left-3.5 top-3.5 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 font-label-md text-[12px] text-primary backdrop-blur-md">
                 {rank}
@@ -231,33 +257,35 @@ function TopFiveRow({
                  fades in with the overlay above, and on a touchscreen the tap
                  that shows that overlay shows this too.
               */}
-              <motion.button
-                type="button"
-                onClick={(e) => {
-                  // The tile opens the title; without this the modal would
-                  // open behind the removal.
-                  e.stopPropagation();
-                  void clear(rank);
-                }}
-                aria-label={`Remove ${pick.title} from ${heading}`}
-                title={`Remove ${pick.title}`}
-                onHoverStart={() => setHovered(rank)}
-                onFocus={() => setHovered(rank)}
-                onBlur={() => setHovered((r) => (r === rank ? null : r))}
-                animate={
-                  hovered === rank
-                    ? { opacity: 1, scale: 1, y: 0 }
-                    : { opacity: 0, scale: 0.4, y: -6 }
-                }
-                whileHover={{ scale: 1.18 }}
-                whileTap={{ scale: 0.82 }}
-                transition={{ type: "spring", stiffness: 520, damping: 26 }}
-                className="absolute right-3.5 top-3.5 z-20 grid h-7 w-7 place-items-center rounded-full bg-black/55 text-white/90 ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-error hover:text-on-error hover:ring-error"
-              >
-                <Icon name="close" className="text-[14px]" />
-              </motion.button>
+              {editable ? (
+                <motion.button
+                  type="button"
+                  onClick={(e) => {
+                    // The tile opens the title; without this the modal would
+                    // open behind the removal.
+                    e.stopPropagation();
+                    void clear(rank);
+                  }}
+                  aria-label={`Remove ${pick.title} from ${heading}`}
+                  title={`Remove ${pick.title}`}
+                  onHoverStart={() => setHovered(rank)}
+                  onFocus={() => setHovered(rank)}
+                  onBlur={() => setHovered((r) => (r === rank ? null : r))}
+                  animate={
+                    hovered === rank
+                      ? { opacity: 1, scale: 1, y: 0 }
+                      : { opacity: 0, scale: 0.4, y: -6 }
+                  }
+                  whileHover={{ scale: 1.18 }}
+                  whileTap={{ scale: 0.82 }}
+                  transition={{ type: "spring", stiffness: 520, damping: 26 }}
+                  className="absolute right-3.5 top-3.5 z-20 grid h-7 w-7 place-items-center rounded-full bg-black/55 text-white/90 ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-error hover:text-on-error hover:ring-error"
+                >
+                  <Icon name="close" className="text-[14px]" />
+                </motion.button>
+              ) : null}
             </motion.div>
-          ) : (
+          ) : editable ? (
             <button
               key={rank}
               type="button"
@@ -272,12 +300,25 @@ function TopFiveRow({
               <Icon name="add" className="text-[22px]" />
               <span className="font-label-md text-[12px]">{rank}</span>
             </button>
+          ) : (
+            /*
+               An empty slot someone else left empty. Still drawn, because the
+               row is five ranked places and a four-poster row would read as a
+               top four — but inert and unlabelled, with nothing inviting a
+               press that the policies would refuse.
+            */
+            <div
+              key={rank}
+              className="flex aspect-[2/3] items-center justify-center rounded-xl border border-dashed border-white/10 font-label-md text-[12px] text-on-surface-variant/50"
+            >
+              {rank}
+            </div>
           );
         })}
       </div>
 
       <AnimatePresence initial={false}>
-        {picking !== null ? (
+        {editable && picking !== null ? (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}

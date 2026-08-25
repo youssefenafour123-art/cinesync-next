@@ -16,13 +16,28 @@ import { Icon } from "@/components/ui/Icon";
  * and once the list is on screen the honest answer is no.
  */
 export function NotificationsMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { items, ready, markRead, clear } = useNotifications();
+  const { items, ready, refresh, markRead, clear } = useNotifications();
   const ref = useRef<HTMLDivElement>(null);
 
+  /*
+     Read again on the way open, then mark what is there.
+
+     A follow notification is written by a trigger on someone else's action, so
+     this client is never told — the bell polls, and pressing it is the one
+     moment it is certain somebody wants to know. Marking read waits for the
+     refetch, or anything that arrived in it would be marked read before it was
+     ever on screen.
+  */
   useEffect(() => {
     if (!open) return;
-    void markRead();
-  }, [open, markRead]);
+    let cancelled = false;
+    void refresh().then(() => {
+      if (!cancelled) void markRead();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, refresh, markRead]);
 
   // Escape and click-away. `mousedown` rather than `click`, so a press that
   // starts outside closes without also activating whatever is underneath.
@@ -107,6 +122,7 @@ function NotificationRow({
   onClose: () => void;
 }) {
   const openPerson = useAppStore((s) => s.openPerson);
+  const openUserProfile = useAppStore((s) => s.openUserProfile);
   const { isFollowing, toggle, pending } = useFollowing();
 
   if (n.kind === "follow") {
@@ -114,7 +130,30 @@ function NotificationRow({
     const following = them ? isFollowing(them) : false;
 
     return (
-      <div className="flex items-center gap-3 px-4 py-3">
+      /* The row opens whoever followed you, the same way a row in the People
+         panel does. "Follow back" stops the click so the two don't both fire. */
+      <div
+        onClick={
+          them
+            ? () => {
+                openUserProfile(them);
+                onClose();
+              }
+            : undefined
+        }
+        role={them ? "button" : undefined}
+        tabIndex={them ? 0 : undefined}
+        onKeyDown={(e) => {
+          if (them && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            openUserProfile(them);
+            onClose();
+          }
+        }}
+        className={`flex items-center gap-3 px-4 py-3 transition-colors ${
+          them ? "cursor-pointer hover:bg-white/5" : ""
+        }`}
+      >
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15">
           <Icon name="person_add" className="text-[18px] text-primary" />
         </span>
@@ -133,7 +172,10 @@ function NotificationRow({
         {them ? (
           <button
             type="button"
-            onClick={() => void toggle(them)}
+            onClick={(e) => {
+              e.stopPropagation();
+              void toggle(them);
+            }}
             disabled={pending === them}
             className={`shrink-0 rounded-full px-3 py-1.5 font-label-md text-[12px] transition-colors disabled:opacity-60 ${
               following

@@ -28,6 +28,7 @@ import { AddSourceModal } from "@/components/modals/AddSourceModal";
 import { AuthModal } from "@/components/modals/AuthModal";
 import { SearchModal } from "@/components/modals/SearchModal";
 import { PersonModal } from "@/components/modals/PersonModal";
+import { UserProfileModal } from "@/components/modals/UserProfileModal";
 import { Toast } from "@/components/ui/Toast";
 import { QuoteTicker } from "@/components/ui/QuoteTicker";
 
@@ -86,6 +87,7 @@ export default function Home() {
   }, [setAuthOpen, showToast]);
   const searchOpen = useAppStore((s) => s.searchOpen);
   const personId = useAppStore((s) => s.personId);
+  const viewedUserId = useAppStore((s) => s.viewedUserId);
 
   const motionPreference = useMotionPreference();
 
@@ -187,6 +189,12 @@ export default function Home() {
 
       <AnimatePresence>
         {personId ? <PersonModal key={`person-${personId}`} id={personId} /> : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {viewedUserId ? (
+          <UserProfileModal key={`user-${viewedUserId}`} userId={viewedUserId} />
+        ) : null}
       </AnimatePresence>
 
       <Toast />

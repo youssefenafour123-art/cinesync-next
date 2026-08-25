@@ -210,11 +210,32 @@ function FollowList({ userId, which }: { userId: string; which: "following" | "f
 }
 
 function PersonRow({ profile }: { profile: Profile }) {
+  const openUserProfile = useAppStore((s) => s.openUserProfile);
   const { isFollowing, toggle, pending } = useFollowing();
   const following = isFollowing(profile.id);
 
+  /*
+     The row opens them, the button follows them.
+
+     Every row here — a search result, someone you follow, someone who follows
+     you — was a name with a Follow button and no way to see whose name it was.
+     The row is the way in now; the button stops the click before it gets
+     there, so following someone doesn't also open them.
+  */
   return (
-    <div className="glass-card flex items-center gap-4 rounded-lg p-3">
+    <div
+      onClick={() => openUserProfile(profile.id)}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${profile.displayName || profile.username}'s profile`}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openUserProfile(profile.id);
+        }
+      }}
+      className="glass-card flex cursor-pointer items-center gap-4 rounded-lg p-3 transition-colors hover:bg-white/5"
+    >
       <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-container-high">
         {profile.avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -235,7 +256,10 @@ function PersonRow({ profile }: { profile: Profile }) {
 
       <button
         type="button"
-        onClick={() => void toggle(profile.id)}
+        onClick={(e) => {
+          e.stopPropagation();
+          void toggle(profile.id);
+        }}
         disabled={pending === profile.id}
         aria-pressed={following}
         className={`shrink-0 rounded-full px-4 py-2 font-label-md text-label-md transition-colors disabled:opacity-60 ${

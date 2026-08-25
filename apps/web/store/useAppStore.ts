@@ -69,6 +69,19 @@ interface AppState {
   openPerson: (id: number) => void;
   closePerson: () => void;
 
+  /*
+     Someone else's CineSync account, shown in a modal.
+
+     A separate field from `personId` even though both are "a profile": one is
+     a TMDB person read from `/api/person`, the other is a row in `profiles`
+     read under RLS, and they share nothing but the word. Keeping them apart
+     also lets one stack over the other — a director opened from someone's top
+     five leaves their profile underneath.
+  */
+  viewedUserId: string | null;
+  openUserProfile: (userId: string) => void;
+  closeUserProfile: () => void;
+
   searchOpen: boolean;
   setSearchOpen: (open: boolean) => void;
 
@@ -128,6 +141,10 @@ export const useAppStore = create<AppState>((set) => ({
   // from. `useModalBehavior` hands out the z-index that makes that work.
   openPerson: (personId) => set({ personId, searchOpen: false }),
   closePerson: () => set({ personId: null }),
+
+  viewedUserId: null,
+  openUserProfile: (viewedUserId) => set({ viewedUserId, searchOpen: false }),
+  closeUserProfile: () => set({ viewedUserId: null }),
 
   searchOpen: false,
   setSearchOpen: (searchOpen) => set({ searchOpen }),

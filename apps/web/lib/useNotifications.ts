@@ -34,6 +34,61 @@ let inFlight: Promise<void> | null = null;
  */
 let checkedFor: string | null = null;
 
+/**
+ * How often the bell looks again while the tab is in front.
+ *
+ * A follow notification is written by a database trigger — see
+ * `notify_on_follow` in 0006 — so nothing on this client knows it happened.
+ * Loading once per page load meant the only way to see that someone had
+ * followed you was to reload the page.
+ *
+ * Polling rather than Supabase Realtime: `notifications` is not in the
+ * `supabase_realtime` publication, and adding it is a migration run by hand
+ * against production for a table whose rows arrive minutes apart. The wake-ups
+ * below make the common case immediate anyway — coming back to the tab is what
+ * someone does between following and looking.
+ */
+const POLL_MS = 45_000;
+
+/**
+ * The listeners and the timer that keep the bell current, at most one set.
+ *
+ * Keyed by user id rather than reference counted: `useNotifications` is used
+ * by both the nav bell and the panel under it, and the two mount and unmount
+ * independently. Keying means the second consumer re-uses the first's timer
+ * instead of adding one of its own.
+ */
+let live: { userId: string; stop: () => void } | null = null;
+
+function startLive(userId: string): void {
+  if (live?.userId === userId) return;
+  live?.stop();
+
+  // A hidden tab is throttled by the browser anyway, and re-reading for
+  // someone who isn't looking is a request nobody asked for.
+  const wake = () => {
+    if (document.visibilityState === "visible") void load(userId);
+  };
+
+  const timer = setInterval(wake, POLL_MS);
+  document.addEventListener("visibilitychange", wake);
+  window.addEventListener("focus", wake);
+
+  live = {
+    userId,
+    stop() {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("focus", wake);
+    },
+  };
+}
+
+function stopLive(): void {
+  live?.stop();
+  live = null;
+}
+
 const subscribers = new Set<() => void>();
 function publish() {
   for (const fn of subscribers) fn();
@@ -123,9 +178,12 @@ export function useNotifications() {
       items = [];
       loadedFor = null;
       checkedFor = null;
+      stopLive();
       publish();
       return;
     }
+
+    startLive(user.id);
 
     if (loadedFor !== user.id) {
       void load(user.id).then(() => {
@@ -136,6 +194,17 @@ export function useNotifications() {
         void checkReleases(user.id);
       });
     }
+  }, [user]);
+
+  /**
+   * Reads the list again now.
+   *
+   * The bell calls this when it is opened: someone pressing it is the clearest
+   * signal there is that they want to know, and it costs one query.
+   */
+  const refresh = useCallback(async () => {
+    if (!user) return;
+    await load(user.id);
   }, [user]);
 
   const markRead = useCallback(async () => {
@@ -171,6 +240,7 @@ export function useNotifications() {
     unread: items.filter((n) => !n.read).length,
     ready: user ? loadedFor === user.id : false,
     signedIn: Boolean(user),
+    refresh,
     markRead,
     clear,
   };
