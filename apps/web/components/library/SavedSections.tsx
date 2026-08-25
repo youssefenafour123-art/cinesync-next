@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useWatchlist } from "@/lib/useWatchlist";
+import { useWatched } from "@/lib/useWatched";
 import { useLists } from "@/lib/useLists";
 import type { ListSummary, SavedTitle, Visibility } from "@/lib/lists";
 import { fetchListItems } from "@/lib/lists";
@@ -48,6 +49,41 @@ export function WatchlistSection() {
           items={items}
           onRemove={(t) => void toggle(toMediaItem(t))}
           removeLabel={(t) => `Remove ${t.title} from your watchlist`}
+          busy={pending}
+        />
+      )}
+    </section>
+  );
+}
+
+/**
+ * What the account has marked as seen.
+ *
+ * Beside the watchlist rather than replacing anything in it: the two lists are
+ * independent, so a film can be on both — watched last year, queued for a
+ * rewatch — and taking a title off one has never touched the other.
+ */
+export function WatchedSection() {
+  const { items, ready, signedIn, toggle, pending } = useWatched();
+
+  if (!signedIn) return null;
+
+  return (
+    <section className="mb-8">
+      <SectionHeading title="Watched" count={ready ? items.length : undefined} />
+
+      {!ready ? (
+        <SavedTitleGridSkeleton />
+      ) : items.length === 0 ? (
+        <EmptyShelf>
+          Nothing marked yet. Open any title and press Watched to keep a record of having seen it.
+        </EmptyShelf>
+      ) : (
+        <SavedTitleGrid
+          items={items}
+          onRemove={(t) => void toggle(toMediaItem(t))}
+          removeLabel={(t) => `Remove ${t.title} from your watched list`}
+          removeIcon="visibility_off"
           busy={pending}
         />
       )}

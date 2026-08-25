@@ -116,7 +116,10 @@ export function useLists() {
         const id = await createList(name, { visibility });
         // Appended rather than refetched. `fetchMyLists` orders by creation,
         // watchlist first, so the end of the array is where this belongs.
-        lists = [...lists, { id, name: name.trim(), visibility, isWatchlist: false, itemCount: 0 }];
+        lists = [
+          ...lists,
+          { id, name: name.trim(), visibility, isWatchlist: false, isWatched: false, itemCount: 0 },
+        ];
         publish();
         return id;
       } catch (err) {
@@ -201,7 +204,13 @@ export function useLists() {
   return {
     lists,
     /** The lists the user made, without the watchlist the trigger made for them. */
-    custom: lists.filter((l) => !l.isWatchlist),
+    /*
+       The lists someone made, which is neither of the two the database made
+       for them. Both flags, not just the watchlist: a "Watched" row appearing
+       under My Lists — deletable, renameable, with a visibility menu — would
+       be the same mistake the watchlist filter was written to avoid.
+    */
+    custom: lists.filter((l) => !l.isWatchlist && !l.isWatched),
     ready: loaded,
     signedIn: Boolean(user),
     pending,

@@ -47,8 +47,18 @@ export interface ListSummary {
   description?: string;
   visibility: Visibility;
   isWatchlist: boolean;
+  isWatched: boolean;
   itemCount: number;
 }
+
+/**
+ * The two lists the database makes for you.
+ *
+ * A flag column each on `lists`, rather than a `kind` — that is how the
+ * watchlist was already modelled, and a partial unique index per flag is what
+ * keeps there being exactly one of each per account.
+ */
+export type SystemListColumn = "is_watchlist" | "is_watched";
 
 export interface Favourite extends SavedTitle {
   rank: number;
@@ -74,7 +84,25 @@ interface ListRow {
   description: string | null;
   visibility: Visibility;
   is_watchlist: boolean;
+  is_watched?: boolean;
   list_items: { count: number }[];
+}
+
+const LIST_COLUMNS = "id,name,description,visibility,is_watchlist,is_watched,list_items(count)";
+
+/*
+   The same select, without the column 0008 adds.
+
+   Migrations here are run by hand against production, so there is a window
+   where the deployed code is ahead of the schema. Asking for a column that
+   does not exist yet fails the whole query — every list would vanish from the
+   Library and the profile until someone opened the SQL editor. Falling back
+   costs one retry in that window and nothing afterwards.
+*/
+const LIST_COLUMNS_PRE_WATCHED = "id,name,description,visibility,is_watchlist,list_items(count)";
+
+function isMissingWatchedColumn(message: string): boolean {
+  return /is_watched/.test(message) && /(does not exist|column)/i.test(message);
 }
 
 /**
@@ -87,25 +115,45 @@ interface ListRow {
  * the follow graph stopped being empty.
  */
 export async function fetchMyLists(userId: string): Promise<ListSummary[]> {
-  const { data, error } = await supabaseBrowser()
-    .from("lists")
-    // The count comes back as an aggregate on the relation rather than a
-    // second query per list.
-    .select("id,name,description,visibility,is_watchlist,list_items(count)")
-    .eq("user_id", userId)
-    .order("is_watchlist", { ascending: false })
-    .order("created_at", { ascending: true });
+  const read = (columns: string) =>
+    supabaseBrowser()
+      .from("lists")
+      // The count comes back as an aggregate on the relation rather than a
+      // second query per list.
+      .select(columns)
+      .eq("user_id", userId)
+      .order("is_watchlist", { ascending: false })
+      .order("created_at", { ascending: true });
+
+  let { data, error } = await read(LIST_COLUMNS);
+  if (error && isMissingWatchedColumn(error.message)) {
+    ({ data, error } = await read(LIST_COLUMNS_PRE_WATCHED));
+  }
 
   if (error) throw new Error(error.message);
 
-  return ((data ?? []) as ListRow[]).map((row) => ({
+  return ((data ?? []) as unknown as ListRow[]).map((row) => ({
     id: row.id,
     name: row.name,
     description: row.description ?? undefined,
     visibility: row.visibility,
     isWatchlist: row.is_watchlist,
+    isWatched: row.is_watched ?? false,
     itemCount: row.list_items?.[0]?.count ?? 0,
   }));
+}
+
+/**
+ * Someone else's lists — as many of them as the reader is allowed to see.
+ *
+ * No visibility filter here and none needed: the select policy is
+ * `can_view(user_id, visibility)`, so a private list is not withheld by this
+ * query, it never arrives. That is deliberately the same call `fetchMyLists`
+ * makes; the difference is only whose id goes in, which is why passing your
+ * own returns everything and passing a stranger's returns their public ones.
+ */
+export async function fetchListsVisibleTo(userId: string): Promise<ListSummary[]> {
+  return fetchMyLists(userId);
 }
 
 export async function fetchListItems(listId: string): Promise<SavedTitle[]> {
@@ -127,24 +175,37 @@ export async function fetchListItems(listId: string): Promise<SavedTitle[]> {
 }
 
 /**
- * The signed-in user's watchlist row, creating nothing — the signup trigger
- * owns that.
+ * One of the two lists the signup trigger owns, by user id. Creates nothing.
  *
  * Owner-filtered for the same reason as `fetchMyLists`, and here the
  * consequence was sharper: follow one person and `is_watchlist` alone matches
  * their watchlist too, so `maybeSingle()` throws on multiple rows and
  * `useWatchlist`'s catch turns that into every badge silently going dark.
  */
-export async function fetchWatchlistId(userId: string): Promise<string | null> {
+export async function fetchSystemListId(
+  userId: string,
+  column: SystemListColumn,
+): Promise<string | null> {
   const { data, error } = await supabaseBrowser()
     .from("lists")
     .select("id")
     .eq("user_id", userId)
-    .eq("is_watchlist", true)
+    .eq(column, true)
     .maybeSingle();
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    // Before 0008 runs there is no `is_watched` column, and no watched list to
+    // find. An account without one behaves as an empty one rather than as an
+    // error nobody can act on.
+    if (isMissingWatchedColumn(error.message)) return null;
+    throw new Error(error.message);
+  }
   return (data as { id: string } | null)?.id ?? null;
+}
+
+/** The watchlist, by the name the rest of the app knows it by. */
+export function fetchWatchlistId(userId: string): Promise<string | null> {
+  return fetchSystemListId(userId, "is_watchlist");
 }
 
 /**
@@ -219,8 +280,9 @@ export async function createList(
       // Matches the table default. A new list is shown to the people who
       // follow you, not to everyone, and not to nobody.
       visibility: options.visibility ?? "followers",
-      // Never from here. The one watchlist is the trigger's, and the partial
-      // unique index would refuse a second anyway.
+      // Never from here. The one watchlist and the one watched list are the
+      // trigger's, and the partial unique indexes would refuse a second of
+      // either anyway.
       is_watchlist: false,
     })
     .select("id")

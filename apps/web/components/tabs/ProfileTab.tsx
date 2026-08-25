@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useSession } from "@/lib/useSession";
 import { useWatchlist } from "@/lib/useWatchlist";
+import { useWatched } from "@/lib/useWatched";
 import { useLists } from "@/lib/useLists";
 import { useAppStore } from "@/store/useAppStore";
 import { useSourcesStore } from "@/store/useSourcesStore";
@@ -11,7 +12,11 @@ import { fetchFollowCounts, joinedOn, updateProfile } from "@/lib/profile";
 import { patchMyProfile, useMyProfile } from "@/lib/useMyProfile";
 import { uploadAvatar } from "@/lib/avatar";
 import type { FollowCounts } from "@/lib/profile";
-import { ListsSection, WatchlistSection } from "@/components/library/SavedSections";
+import {
+  ListsSection,
+  WatchedSection,
+  WatchlistSection,
+} from "@/components/library/SavedSections";
 import { PeoplePanel } from "@/components/profile/PeoplePanel";
 import { SavedTitleGrid } from "@/components/ui/SavedTitleGrid";
 import { TopFive } from "@/components/ui/TopFive";
@@ -23,6 +28,7 @@ const VIEWS = [
   { id: "people", label: "People" },
   { id: "lists", label: "Lists" },
   { id: "watchlist", label: "Watchlist" },
+  { id: "watched", label: "Watched" },
 ] as const;
 
 type View = (typeof VIEWS)[number]["id"];
@@ -104,6 +110,7 @@ export function ProfileTab() {
       {view === "people" ? <PeoplePanel /> : null}
       {view === "lists" ? <ListsSection /> : null}
       {view === "watchlist" ? <WatchlistSection /> : null}
+      {view === "watched" ? <WatchedSection /> : null}
     </div>
   );
 }
@@ -308,6 +315,7 @@ function AvatarPicker({
 
 function Overview() {
   const watchlist = useWatchlist();
+  const watched = useWatched();
   const { custom, ready: listsReady } = useLists();
   const history = useSourcesStore((s) => s.history);
   const libraryIds = useAppStore((s) => s.libraryIds);
@@ -342,13 +350,20 @@ function Overview() {
             across your watchlist and lists
           </p>
 
-          <div className="mt-5 grid grid-cols-2 gap-4 border-t border-white/15 pt-4">
+          <div className="mt-5 grid grid-cols-3 gap-4 border-t border-white/15 pt-4">
             <div>
               <CountUp
                 value={watchlist.items.length}
                 className="block font-title-lg text-title-lg text-on-surface"
               />
               <span className="font-label-md text-label-md text-on-surface/60">On watchlist</span>
+            </div>
+            <div>
+              <CountUp
+                value={watched.items.length}
+                className="block font-title-lg text-title-lg text-on-surface"
+              />
+              <span className="font-label-md text-label-md text-on-surface/60">Watched</span>
             </div>
             <div>
               <CountUp value={inLists} className="block font-title-lg text-title-lg text-on-surface" />
@@ -360,6 +375,7 @@ function Overview() {
         <div className="glass-panel rounded-lg p-6">
           <h3 className="mb-2 font-title-lg text-title-lg text-on-surface">Stats</h3>
           <StatRow icon="bookmark" label="Watchlisted" value={watchlist.items.length} />
+          <StatRow icon="visibility" label="Watched" value={watched.items.length} />
           <StatRow icon="list" label="Lists" value={listsReady ? custom.length : 0} />
           <StatRow icon="subscriptions" label="In Stremio library" value={libraryIds.size} />
           <StatRow icon="history" label="Recent imports" value={history.length} />

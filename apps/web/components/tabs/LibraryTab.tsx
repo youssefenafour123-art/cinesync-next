@@ -7,7 +7,11 @@ import { useAppStore } from "@/store/useAppStore";
 import { useSync } from "@/lib/useSync";
 import { useLibraryRefresh } from "@/lib/useLibrarySync";
 import { useLibraryActions } from "@/lib/useLibraryActions";
-import { ListsSection, WatchlistSection } from "@/components/library/SavedSections";
+import {
+  ListsSection,
+  WatchedSection,
+  WatchlistSection,
+} from "@/components/library/SavedSections";
 import { StremioLibrary } from "@/components/library/StremioLibrary";
 import { metahubPoster } from "@/lib/stremio";
 import { Icon } from "@/components/ui/Icon";
@@ -53,6 +57,7 @@ export function LibraryTab() {
       </div>
 
       <WatchlistSection />
+      <WatchedSection />
       <ListsSection />
 
       <StremioLibrary />

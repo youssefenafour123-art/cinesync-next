@@ -5,6 +5,7 @@ import type { CreditedPerson, MediaItem } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 import { useLibraryActions } from "@/lib/useLibraryActions";
 import { useWatchlist } from "@/lib/useWatchlist";
+import { useWatched } from "@/lib/useWatched";
 import { AddToList } from "@/components/ui/AddToList";
 import { useTrailer } from "@/lib/useTrailer";
 import { PosterImage } from "@/components/ui/PosterImage";
@@ -47,6 +48,7 @@ export function DetailsModal({ item }: { item: MediaItem }) {
   const inLibrary = useAppStore((s) => (item.imdbId ? s.libraryIds.has(item.imdbId) : false));
   const { add, remove, adding, removing } = useLibraryActions();
   const watchlist = useWatchlist();
+  const watched = useWatched();
   const { play } = useTrailer();
 
   // List endpoints carry no plot/genres/credits for some titles. Cinemeta
@@ -171,6 +173,7 @@ export function DetailsModal({ item }: { item: MediaItem }) {
             onPlay={() => play(full)}
             onAdd={() => add(full)}
             watchlist={watchlist}
+            watched={watched}
             onRemove={() => remove(full)}
           />
         </div>
@@ -312,6 +315,7 @@ export function DetailsModal({ item }: { item: MediaItem }) {
             onPlay={() => play(full)}
             onAdd={() => add(full)}
             watchlist={watchlist}
+            watched={watched}
             onRemove={() => remove(full)}
           />
         </div>
@@ -421,6 +425,7 @@ function ActionButtons({
   onAdd,
   onRemove,
   watchlist,
+  watched,
 }: {
   item: MediaItem;
   inLibrary: boolean;
@@ -430,8 +435,10 @@ function ActionButtons({
   onAdd: () => void;
   onRemove: () => void;
   watchlist: ReturnType<typeof useWatchlist>;
+  watched: ReturnType<typeof useWatched>;
 }) {
   const saved = watchlist.has(item.imdbId);
+  const seen = watched.has(item.imdbId);
   return (
     <>
       <button
@@ -522,6 +529,33 @@ function ActionButtons({
         >
           <Icon name={saved ? "bookmark_added" : "bookmark_add"} fill={saved} className="text-[18px]" />
           {saved ? "On your watchlist" : "Add to watchlist"}
+        </button>
+      ) : null}
+
+      {/*
+         Watched, beside the watchlist and not instead of it.
+
+         Marking something seen deliberately leaves it on the watchlist. The
+         two answer different questions — what I mean to see, what I have seen
+         — and a title can be both: something watched years ago and queued for
+         a rewatch. Moving it automatically would be this app deciding that
+         nobody rewatches anything.
+      */}
+      {watched.signedIn ? (
+        <button
+          type="button"
+          onClick={() => watched.toggle(item)}
+          disabled={watched.pending || !item.imdbId}
+          title={item.imdbId ? undefined : "This title has no IMDb ID yet"}
+          aria-pressed={seen}
+          className={`flex w-full items-center justify-center gap-2 rounded-full border py-3 font-label-md text-label-md transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            seen
+              ? "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15"
+              : "border-white/10 text-on-surface-variant hover:border-primary/40 hover:text-on-surface"
+          }`}
+        >
+          <Icon name={seen ? "visibility" : "visibility_off"} fill={seen} className="text-[18px]" />
+          {seen ? "Watched" : "Mark as watched"}
         </button>
       ) : null}
 
