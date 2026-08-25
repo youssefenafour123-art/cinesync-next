@@ -999,11 +999,50 @@ export interface RecommendationSeed {
  */
 const GENERIC_GENRES = new Set([18, 35, 10751, 10749]);
 
+/**
+ * Keywords that describe how a title was made or when it is set, rather than
+ * what it is about.
+ *
+ * The keyword vocabulary needs the same treatment as the genre one: "miniseries"
+ * is true of Chernobyl and equally true of The Haunting of Bly Manor, so it is
+ * not evidence that one is like the other. Decades go for the same reason — a
+ * period tag is a setting, not a subject.
+ */
+const GENERIC_KEYWORDS = new Set([
+  "miniseries",
+  "mini-series",
+  "limited series",
+  "anthology",
+  "woman director",
+  "aftercreditsstinger",
+  "duringcreditsstinger",
+]);
+
+const isDistinctiveKeyword = (name: string) => {
+  const n = name.trim().toLowerCase();
+  // "1980s", "1990s" — a decade tag places a title, it does not describe it.
+  return !GENERIC_KEYWORDS.has(n) && !/^\d{4}s$/.test(n);
+};
+
 /** Candidates kept for enrichment. Twelve leaves slack above the ten returned. */
 const REC_SHORTLIST = 12;
 /** Quality bar a neighbour must clear before it is worth recommending. */
 const REC_MIN_VOTES = 100;
 const REC_MIN_RATING = 6;
+/**
+ * The same bar, lowered, for candidates admitted on a shared subject.
+ *
+ * The floors exist because genre overlap is weak evidence, so quality has to
+ * carry more of the weight. A shared distinctive keyword is much stronger
+ * evidence than a shared genre, and the titles it finds are often small: the
+ * two best answers for Chernobyl — Lockerbie and Toxic Town, both true-story
+ * disasters — sit at 90 and 89 votes and were thrown away by a bar set for a
+ * weaker signal.
+ */
+const REC_MIN_VOTES_KEYWORD = 50;
+
+/** How many of TMDB's own recommendations are worth a keyword lookup each. */
+const KEYWORD_LOOKUPS = 16;
 
 /**
  * "More like this", from one title someone actually watched.
@@ -1030,6 +1069,28 @@ const REC_MIN_RATING = 6;
  * seed whose own genres are all generic, which is every romantic comedy,
  * produces nothing at the first.
  *
+ * **Where genre cannot discriminate at all, subject does.** A seed whose only
+ * genre is a generic one gets no signal from the gate above — every candidate
+ * either shares that genre or is not in the pool. Those seeds are matched on
+ * TMDB's keywords instead: Chernobyl carries `nuclear catastrophe`, `disaster`,
+ * `based on true story`, and its recommendation list splits cleanly on them —
+ * Lockerbie, Toxic Town and Station Eleven share one, while My Life with the
+ * Walter Boys and Dear Edward share none. Format and period tags are excluded
+ * for the same reason generic genres are; "also a miniseries set in the 1980s"
+ * is how Bly Manor would otherwise arrive next to Chernobyl.
+ *
+ * That costs one request per candidate, which is why it runs only for the seeds
+ * genre cannot serve, and why the whole route is cached for a day.
+ *
+ * That second tier asks for two shared genres *or as many as the seed has*,
+ * which is not pedantry. Chernobyl's entire TMDB genre list is `[Drama]`: it
+ * cannot offer a distinctive genre to the first tier, and it cannot offer two
+ * of anything to the second, so a fixed two made every tier unsatisfiable and
+ * returned nothing at all for a title with twenty recommendations waiting.
+ * Single-genre titles are common among prestige drama. Capping the requirement
+ * at what the seed actually has changes nothing for a seed with two or more —
+ * Miss Sloane, the case this gate was built for, carries three.
+ *
  * Only then does rating matter, and only among titles already established as
  * similar: the shortlist is enriched — which replaces TMDB's rating with
  * IMDb's — and ordered by the same weighted rating the curated rails use, so
@@ -1042,6 +1103,30 @@ const REC_MIN_RATING = 6;
  * Where TMDB's own pool is thin this cannot invent a better one — it stops the
  * picks being wrong, it cannot make the data richer.
  */
+/**
+ * A title's keyword ids.
+ *
+ * Films and television disagree about the field name — `/movie/{id}/keywords`
+ * answers with `keywords`, `/tv/{id}/keywords` with `results` — and reading the
+ * wrong one returns an empty set rather than an error, which would look exactly
+ * like a title with no keywords. Both are read.
+ */
+async function keywordsFor(
+  endpoint: "movie" | "tv",
+  id: number,
+): Promise<{ id: number; name: string }[]> {
+  type KeywordList = {
+    keywords?: { id: number; name: string }[];
+    results?: { id: number; name: string }[];
+  };
+
+  const data = await tmdb<KeywordList>(`/${endpoint}/${id}/keywords`, {}, 86400).catch(
+    () => ({}) as KeywordList,
+  );
+
+  return data.keywords ?? data.results ?? [];
+}
+
 export async function recommendationsFor(
   imdbId: string,
   limit = 10,
@@ -1103,10 +1188,65 @@ export async function recommendationsFor(
     }
   };
 
-  if (seedGenres.size) {
+  /**
+   * Appends candidates that share a subject with the seed.
+   *
+   * Only the keyword lookups are parallel; the loop that keeps them stays in
+   * TMDB's order, because that order is the behavioural ranking and is still
+   * the primary signal — the keywords decide who is eligible, not who leads.
+   */
+  const gatherByKeyword = async (list: TmdbListItem[]) => {
+    const seedKeywords = new Set(
+      (await keywordsFor(endpoint, tmdbId)).filter((k) => isDistinctiveKeyword(k.name)).map((k) => k.id),
+    );
+    if (!seedKeywords.size) return;
+
+    const pool = list
+      .filter(
+        (raw) =>
+          Boolean(raw.id) &&
+          !seen.has(raw.id) &&
+          Boolean(raw.poster_path) &&
+          Boolean(raw.overview) &&
+          (raw.vote_count ?? 0) >= REC_MIN_VOTES_KEYWORD &&
+          (raw.vote_average ?? 0) >= REC_MIN_RATING,
+      )
+      .slice(0, KEYWORD_LOOKUPS);
+
+    const keywords = await Promise.all(pool.map((raw) => keywordsFor(endpoint, raw.id)));
+
+    pool.forEach((raw, i) => {
+      if (shortlist.length >= REC_SHORTLIST) return;
+      const shares = keywords[i].some((k) => seedKeywords.has(k.id));
+      if (!shares) return;
+      seen.add(raw.id);
+      shortlist.push(raw);
+    });
+  };
+
+  const seedHasDistinctiveGenre = [...seedGenres].some((id) => !GENERIC_GENRES.has(id));
+
+  if (seedHasDistinctiveGenre) {
     gather(recommended, 1, 1);
-    gather(recommended, 2, 0);
+    gather(recommended, Math.min(2, seedGenres.size), 0);
+    /*
+       `/similar` is never admitted on a generic genre alone, so this one keeps
+       its distinctive requirement rather than being capped like the tier
+       above. Tag overlap plus "also a Drama" is precisely the pairing that put
+       Steel Magnolias next to Miss Sloane.
+    */
     gather(similar, 2, 1);
+  } else if (seedGenres.size) {
+    // Genre is blind for this seed: match on what it is about instead.
+    await gatherByKeyword(recommended);
+
+    /*
+       Genre as the last resort, not the first. If the seed has no keywords —
+       or none of its recommendations share one — a row of titles that at least
+       share its genre and its audience beats an empty one, and the caller says
+       out loud how few it found.
+    */
+    if (!shortlist.length) gather(recommended, Math.min(2, seedGenres.size), 0);
   } else {
     // No genres to compare against — the seed's detail call failed. TMDB's own
     // ordering is still worth showing; silently returning nothing is not.
