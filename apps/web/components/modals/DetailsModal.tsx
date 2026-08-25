@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { CreditedPerson, MediaItem } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 import { useLibraryActions } from "@/lib/useLibraryActions";
+import { useWatchlist } from "@/lib/useWatchlist";
 import { useTrailer } from "@/lib/useTrailer";
 import { PosterImage } from "@/components/ui/PosterImage";
 import { ScoresPanel } from "@/components/ui/ScoresPanel";
@@ -44,6 +45,7 @@ export function DetailsModal({ item }: { item: MediaItem }) {
   const close = useAppStore((s) => s.closeDetails);
   const inLibrary = useAppStore((s) => (item.imdbId ? s.libraryIds.has(item.imdbId) : false));
   const { add, remove, adding, removing } = useLibraryActions();
+  const watchlist = useWatchlist();
   const { play } = useTrailer();
 
   // List endpoints carry no plot/genres/credits for some titles. Cinemeta
@@ -167,6 +169,7 @@ export function DetailsModal({ item }: { item: MediaItem }) {
             removing={removing}
             onPlay={() => play(full)}
             onAdd={() => add(full)}
+            watchlist={watchlist}
             onRemove={() => remove(full)}
           />
         </div>
@@ -307,6 +310,7 @@ export function DetailsModal({ item }: { item: MediaItem }) {
             removing={removing}
             onPlay={() => play(full)}
             onAdd={() => add(full)}
+            watchlist={watchlist}
             onRemove={() => remove(full)}
           />
         </div>
@@ -415,6 +419,7 @@ function ActionButtons({
   onPlay,
   onAdd,
   onRemove,
+  watchlist,
 }: {
   item: MediaItem;
   inLibrary: boolean;
@@ -423,7 +428,9 @@ function ActionButtons({
   onPlay: () => void;
   onAdd: () => void;
   onRemove: () => void;
+  watchlist: ReturnType<typeof useWatchlist>;
 }) {
+  const saved = watchlist.has(item.imdbId);
   return (
     <>
       <button
@@ -491,6 +498,31 @@ function ActionButtons({
           {adding ? "Adding…" : "Add to Library"}
         </button>
       )}
+
+      {/*
+         Hidden entirely when signed out rather than shown disabled. "Add to
+         Library" is disabled without an IMDb id because the title is the
+         problem and saying so helps; a watchlist button that needs an account
+         is a different thing, and an inert control on a page most visitors use
+         signed out is the kind of decoration this app already had too much of.
+      */}
+      {watchlist.signedIn ? (
+        <button
+          type="button"
+          onClick={() => watchlist.toggle(item)}
+          disabled={watchlist.pending || !item.imdbId}
+          title={item.imdbId ? undefined : "This title has no IMDb ID yet"}
+          aria-pressed={saved}
+          className={`flex w-full items-center justify-center gap-2 rounded-full border py-3 font-label-md text-label-md transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            saved
+              ? "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15"
+              : "border-white/10 text-on-surface-variant hover:border-primary/40 hover:text-on-surface"
+          }`}
+        >
+          <Icon name={saved ? "bookmark_added" : "bookmark_add"} fill={saved} className="text-[18px]" />
+          {saved ? "On your watchlist" : "Add to watchlist"}
+        </button>
+      ) : null}
     </>
   );
 }
