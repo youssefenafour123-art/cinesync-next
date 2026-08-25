@@ -57,7 +57,14 @@ export async function GET(req: Request) {
     const items = await curate(
       endpoint,
       { ...query.params, sort_by: "vote_average.desc" },
-      { minVotes: query.minVotes, floor: query.floor, limit: 24, pages: 3, shortlist: 32 },
+      {
+        minVotes: query.minVotes,
+        floor: query.floor,
+        limit: 24,
+        pages: 3,
+        shortlist: 32,
+        leadGenre: query.leadGenre,
+      },
     );
 
     return Response.json({

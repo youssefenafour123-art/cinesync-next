@@ -877,7 +877,24 @@ interface CurateOptions {
    * floor is already low — can profitably ask for less.
    */
   shortlist?: number;
+  /**
+   * A genre name the title must actually be *about*, not merely carry.
+   *
+   * TMDB's `with_genres` matches membership, and membership is generous: Pulp
+   * Fiction is a Comedy, Forrest Gump is a Romance, Chainsaw Man is a Romance.
+   * All three are true and none of them is what someone pressing that chip
+   * meant. The `genres` array on a detail response is ordered, and that order
+   * carries the answer — Pulp Fiction is "Thriller, Crime, Comedy", Casablanca
+   * is "Drama, Romance". So a genre-led rail asks for its genre to lead.
+   *
+   * Only for rails defined by a genre alone. A keyword-led rail is already
+   * precise, and this would just thin it.
+   */
+  leadGenre?: string;
 }
+
+/** How far down a title's genre list still counts as leading. */
+const LEAD_DEPTH = 2;
 
 /**
  * Fetches a wide candidate pool cheaply (list data only), pre-ranks it,
@@ -890,7 +907,15 @@ interface CurateOptions {
 async function curate(
   endpoint: "movie" | "tv",
   params: Record<string, string>,
-  { minVotes = 500, floor = 6.5, postFloor, limit = 12, pages = 2, shortlist: shortlistSize }: CurateOptions = {},
+  {
+    minVotes = 500,
+    floor = 6.5,
+    postFloor,
+    limit = 12,
+    pages = 2,
+    shortlist: shortlistSize,
+    leadGenre,
+  }: CurateOptions = {},
 ): Promise<MediaItem[]> {
   const kind: MediaKind = endpoint === "movie" ? "movie" : "series";
 
@@ -915,23 +940,44 @@ async function curate(
   const enriched = await Promise.all(shortlist.map((r) => enrich(r.raw, kind)));
 
   const bar = postFloor ?? floor;
-  return enriched
-    .filter((item) => {
-      const r = parseFloat(item.rating ?? "0");
-      return Number.isFinite(r) && r >= bar;
-    })
-    .map((item) => ({
-      item,
-      score: weightedRating(
-        parseFloat(item.rating ?? "0"),
-        item.voteCount ?? 0,
-        mean,
-        minVotes,
-      ),
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((r) => r.item);
+  const passed = enriched.filter((item) => {
+    const r = parseFloat(item.rating ?? "0");
+    return Number.isFinite(r) && r >= bar;
+  });
+
+  const ranked = (pool: MediaItem[]) =>
+    pool
+      .map((item) => ({
+        item,
+        score: weightedRating(
+          parseFloat(item.rating ?? "0"),
+          item.voteCount ?? 0,
+          mean,
+          minVotes,
+        ),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .map((r) => r.item);
+
+  if (!leadGenre) return ranked(passed).slice(0, limit);
+
+  /*
+     Titles the genre actually describes first, then the rest.
+
+     Tiered rather than filtered outright, because the depth is a judgement
+     and a hard cut throws away real members: No Country for Old Men is
+     "Crime, Thriller, Western" and belongs on a Westerns rail even though the
+     genre comes third. So a rail leads with the titles the genre leads for,
+     and only reaches past that when it would otherwise come up short.
+  */
+  const at = (item: MediaItem) => (item.genres ?? []).indexOf(leadGenre);
+  const leads = passed.filter((item) => {
+    const i = at(item);
+    return i > -1 && i < LEAD_DEPTH;
+  });
+  const trails = passed.filter((item) => at(item) >= LEAD_DEPTH);
+
+  return [...ranked(leads), ...ranked(trails)].slice(0, limit);
 }
 
 export interface RecommendationSeed {
@@ -1454,7 +1500,22 @@ export interface Mood {
    * with the same audience, so reusing the film floors returned three results
    * and called it a mood.
    */
-  tv?: { params: Record<string, string>; minVotes?: number; floor?: number } | null;
+  tv?: {
+    params: Record<string, string>;
+    minVotes?: number;
+    floor?: number;
+    leadGenre?: string;
+  } | null;
+  /**
+   * The genre this rail is named for, when it is named for one.
+   *
+   * Set only on the rails defined by a genre alone, and it is the TMDB genre
+   * *name* because that is what survives enrichment. See `CurateOptions.leadGenre`
+   * for what it does and why membership alone was not enough. Keyword-led
+   * rails leave it unset: the keyword is already the precision, and asking a
+   * keyword rail to also lead with a genre only thins it.
+   */
+  leadGenre?: string;
 }
 
 /** Keyword ids verified against TMDB's /search/keyword endpoint. */
@@ -1478,9 +1539,10 @@ export const MOODS: Mood[] = [
     id: "scifi",
     label: "Science Fiction",
     blurb: "Ideas first, spectacle second.",
+    leadGenre: "Science Fiction",
     params: { with_genres: "878", "vote_count.gte": "800" },
     // 10765 is Sci-Fi *and* Fantasy — broader than 878, and the only option.
-    tv: { params: { with_genres: "10765", "vote_count.gte": "200" }, minVotes: 350 },
+    tv: { params: { with_genres: "10765", "vote_count.gte": "200" }, minVotes: 350, leadGenre: "Sci-Fi & Fantasy" },
   },
   {
     id: "neonoir",
@@ -1521,14 +1583,16 @@ export const MOODS: Mood[] = [
     id: "crime",
     label: "Crime & Underworld",
     blurb: "Organised, personal, and rarely victimless.",
+    leadGenre: "Crime",
     params: { with_genres: "80", "vote_count.gte": "800" },
     // Crime is one of the few ids the two vocabularies share.
-    tv: { params: { with_genres: "80", "vote_count.gte": "200" }, minVotes: 350 },
+    tv: { params: { with_genres: "80", "vote_count.gte": "200" }, minVotes: 350, leadGenre: "Crime" },
   },
   {
     id: "horror",
     label: "Horror That Lands",
     blurb: "Well-made frights, not cheap ones.",
+    leadGenre: "Horror",
     params: { with_genres: "27", "vote_count.gte": "700" },
     /*
        Film only, deliberately. TMDB has no Horror genre for television and no
@@ -1548,21 +1612,24 @@ export const MOODS: Mood[] = [
     id: "action",
     label: "Action & Spectacle",
     blurb: "Staged, shot and cut by people who knew what they were doing.",
+    leadGenre: "Action",
     params: { with_genres: "28", "vote_count.gte": "1200" },
     // Television has no Action genre; 10759 is Action & Adventure, the nearest.
-    tv: { params: { with_genres: "10759", "vote_count.gte": "300" }, minVotes: 450 },
+    tv: { params: { with_genres: "10759", "vote_count.gte": "300" }, minVotes: 450, leadGenre: "Action & Adventure" },
   },
   {
     id: "comedy",
     label: "Comedy",
     blurb: "Funny on purpose, and still funny now.",
+    leadGenre: "Comedy",
     params: { with_genres: "35", "vote_count.gte": "1000" },
-    tv: { params: { with_genres: "35", "vote_count.gte": "250" }, minVotes: 400 },
+    tv: { params: { with_genres: "35", "vote_count.gte": "250" }, minVotes: 400, leadGenre: "Comedy" },
   },
   {
     id: "romance",
     label: "Romance",
     blurb: "Two people, and whatever is standing between them.",
+    leadGenre: "Romance",
     params: { with_genres: "10749", "vote_count.gte": "1000" },
     /*
        TMDB has no Romance genre for television — 10749 is film-only, and the
@@ -1576,6 +1643,7 @@ export const MOODS: Mood[] = [
     id: "fantasy",
     label: "Fantasy",
     blurb: "Worlds with their own rules, kept consistently.",
+    leadGenre: "Fantasy",
     params: { with_genres: "14", "vote_count.gte": "800" },
     /*
        Film only. Television folds fantasy into Sci-Fi & Fantasy (10765), which
@@ -1588,47 +1656,53 @@ export const MOODS: Mood[] = [
     id: "mystery",
     label: "Mystery & Detection",
     blurb: "A question worth the running time it takes to answer.",
+    leadGenre: "Mystery",
     params: { with_genres: "9648", "vote_count.gte": "600" },
-    tv: { params: { with_genres: "9648", "vote_count.gte": "200" }, minVotes: 350 },
+    tv: { params: { with_genres: "9648", "vote_count.gte": "200" }, minVotes: 350, leadGenre: "Mystery" },
   },
   {
     id: "war",
     label: "War & Conflict",
     blurb: "What it costs, told without a recruiting poster.",
+    leadGenre: "War",
     params: { with_genres: "10752", "vote_count.gte": "500" },
     // 10768 is War & Politics — broader than the film genre, and the only one.
-    tv: { params: { with_genres: "10768", "vote_count.gte": "150" }, minVotes: 250 },
+    tv: { params: { with_genres: "10768", "vote_count.gte": "150" }, minVotes: 250, leadGenre: "War & Politics" },
   },
   {
     id: "western",
     label: "Westerns",
     blurb: "Frontier, horizon, and somebody who won't move.",
+    leadGenre: "Western",
     params: { with_genres: "37", "vote_count.gte": "300" },
-    tv: { params: { with_genres: "37", "vote_count.gte": "50" }, minVotes: 120 },
+    tv: { params: { with_genres: "37", "vote_count.gte": "50" }, minVotes: 120, leadGenre: "Western" },
   },
   {
     id: "animation",
     label: "Animation",
     blurb: "Drawn, modelled and stop-motion — not only for children.",
+    leadGenre: "Animation",
     params: { with_genres: "16", "vote_count.gte": "800" },
-    tv: { params: { with_genres: "16", "vote_count.gte": "200" }, minVotes: 350 },
+    tv: { params: { with_genres: "16", "vote_count.gte": "200" }, minVotes: 350, leadGenre: "Animation" },
   },
   {
     id: "family",
     label: "Family",
     blurb: "Holds a room of different ages at once.",
+    leadGenre: "Family",
     params: { with_genres: "10751", "vote_count.gte": "800" },
-    tv: { params: { with_genres: "10751", "vote_count.gte": "200" }, minVotes: 350 },
+    tv: { params: { with_genres: "10751", "vote_count.gte": "200" }, minVotes: 350, leadGenre: "Family" },
   },
   {
     id: "documentary",
     label: "Documentary",
     blurb: "True, and made with the care fiction usually gets.",
+    leadGenre: "Documentary",
     // Documentaries collect an order of magnitude fewer votes than features,
     // so this floor is low by design rather than by oversight.
     params: { with_genres: "99", "vote_count.gte": "200" },
     minVotes: 300,
-    tv: { params: { with_genres: "99", "vote_count.gte": "50" }, minVotes: 100 },
+    tv: { params: { with_genres: "99", "vote_count.gte": "50" }, minVotes: 100, leadGenre: "Documentary" },
   },
 
   /* ---- Keyword-led ----------------------------------------------------- *
@@ -1736,12 +1810,20 @@ export function moodsFor(kind: MediaKind): Mood[] {
 /** The discover params and thresholds a mood should run with for this kind. */
 export function moodQuery(mood: Mood, kind: MediaKind) {
   if (kind === "movie" || !mood.tv) {
-    return { params: mood.params, minVotes: mood.minVotes ?? 800, floor: mood.floor ?? 6.6 };
+    return {
+      params: mood.params,
+      minVotes: mood.minVotes ?? 800,
+      floor: mood.floor ?? 6.6,
+      leadGenre: mood.leadGenre,
+    };
   }
   return {
     params: mood.tv.params,
     minVotes: mood.tv.minVotes ?? 250,
     floor: mood.tv.floor ?? mood.floor ?? 6.6,
+    // Television names the same idea differently — Action & Adventure for
+    // Action, Sci-Fi & Fantasy for Science Fiction — so it carries its own.
+    leadGenre: mood.tv.leadGenre,
   };
 }
 
