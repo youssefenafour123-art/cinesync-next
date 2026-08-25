@@ -17,7 +17,18 @@ import { createBrowserClient } from "@supabase/ssr";
  * reason: that prefix inlines the value into the bundle as plaintext.
  */
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+/*
+   Either name works.
+
+   Supabase replaced the JWT `anon` key with a `sb_publishable_…` key and
+   renamed the variable along with it. Projects created before the change still
+   issue the old one, and the client libraries accept both in the same
+   argument, so reading both names means this doesn't depend on which vintage
+   of dashboard the project came from.
+*/
+const anonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 /** Whether accounts are available at all. Lets the UI say so plainly. */
 export function isAuthConfigured(): boolean {
@@ -30,7 +41,7 @@ export function supabaseBrowser() {
   if (!url || !anonKey) {
     throw new Error(
       "Accounts aren't set up on this deployment yet — NEXT_PUBLIC_SUPABASE_URL and " +
-        "NEXT_PUBLIC_SUPABASE_ANON_KEY are missing.",
+        "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY are missing.",
     );
   }
   // One client per tab: each instance opens its own auth listener and token

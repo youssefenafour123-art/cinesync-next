@@ -33,6 +33,31 @@ export function validateUsername(raw: string): string {
   return username;
 }
 
+/**
+ * Whether a username is free.
+ *
+ * `profiles` is publicly readable, so this is a plain select rather than an
+ * endpoint of its own. It exists for the error message: the unique index is
+ * what actually decides, but a violation raised inside the signup trigger
+ * reaches the browser as "Database error saving new user", which tells nobody
+ * anything. Checking first turns that into a sentence someone can act on.
+ *
+ * Racy by nature — two people can pass this check at once. That is fine,
+ * because the index still refuses the second one; this only moves the common
+ * case to a better message.
+ */
+export async function isUsernameAvailable(username: string): Promise<boolean> {
+  const { data, error } = await supabaseBrowser()
+    .from("profiles")
+    .select("username")
+    .eq("username", username)
+    .maybeSingle();
+
+  // A failed lookup must not block signup — let the index be the authority.
+  if (error) return true;
+  return data === null;
+}
+
 export async function signIn(email: string, password: string): Promise<void> {
   const { error } = await supabaseBrowser().auth.signInWithPassword({ email, password });
   if (error) throw new Error(error.message);
@@ -47,6 +72,10 @@ export async function signUp(input: {
   username: string;
 }): Promise<void> {
   const username = validateUsername(input.username);
+
+  if (!(await isUsernameAvailable(username))) {
+    throw new Error(`"${username}" is taken. Try another.`);
+  }
 
   /*
      The username rides along as user metadata rather than being written to
