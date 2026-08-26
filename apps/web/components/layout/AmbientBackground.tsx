@@ -23,8 +23,6 @@ const COLUMNS = 12;
  * be taller than the stage, or the marquee shows a gap at the wrap point.
  */
 const PER_COLUMN = 8;
-/** Columns kept on small screens. */
-const MOBILE_COLUMNS = 5;
 
 /** How far from a column the pointer still lifts it, as a share of the viewport. */
 const PROXIMITY_REACH = 0.34;
@@ -71,6 +69,23 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
   const spotRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
 
+  /*
+     Whether this is a phone, decided in JavaScript rather than CSS.
+
+     Read before the poster fetch below, which skips entirely at this size —
+     `matchMedia` rather than `innerWidth` so a rotation re-decides, and in an
+     effect so the first render matches what the server produced.
+  */
+  const [narrow, setNarrow] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
   // Own copy of the poster pool, for when this mounts on a tab that never
   // calls `onWall`. The prop wins the moment it arrives — it's the same
   // payload, and preferring it avoids swapping the whole wall out underneath a
@@ -78,7 +93,9 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
   const [fetched, setFetched] = useState<string[]>([]);
 
   useEffect(() => {
-    if (wall.length) return;
+    // Nothing to draw it into on a phone — see `narrow` below — so the
+    // payload is not worth fetching either.
+    if (wall.length || narrow) return;
     let cancelled = false;
 
     /*
@@ -101,34 +118,24 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
     return () => {
       cancelled = true;
     };
-  }, [wall.length]);
+  }, [wall.length, narrow]);
 
   const posters = wall.length ? wall : fetched;
 
   /*
-     How many columns to build, decided in JavaScript rather than CSS.
+     No wall at all on a phone.
 
-     The extra columns used to be rendered and then hidden with `hidden
-     sm:block`, which puts their `<img>` tags in the document either way — 192
-     of them on the landing page, of which 179 were measured loading. A phone
-     showing five columns has no use for the other seven, and the cheapest
-     image is the one never requested.
+     Five columns of eight, duplicated for the seamless loop, is eighty `<img>`
+     tags — forty distinct posters, measured downloading in full on a Fast 3G
+     run that took 35 seconds to reach `load`. They sit behind a scrim, at the
+     back of a screen where the content covers most of them, and the half of
+     this component that made the wall worth looking at is the pointer work:
+     the proximity lighting, the spotlight, the tilt. A phone has no pointer.
 
-     `matchMedia` rather than `innerWidth` so a rotation or a resized window
-     re-decides, and read in an effect so the first render matches what the
-     server produced.
+     The aurora orbs stay. They are three gradients on the compositor, they
+     cost nothing, and they are what the backdrop reads as at this size anyway.
   */
-  const [narrow, setNarrow] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 639px)");
-    const sync = () => setNarrow(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-
-  const columnCount = narrow ? MOBILE_COLUMNS : COLUMNS;
+  const columnCount = narrow ? 0 : COLUMNS;
 
   // Fixed-size grid, so the layout never depends on how many posters arrived.
   const columns = useMemo(() => {

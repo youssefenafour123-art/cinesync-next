@@ -8,7 +8,7 @@ import { useMotionPreference } from "@/lib/useReducedMotion";
 import { useSourcesStore } from "@/store/useSourcesStore";
 import { useLibrarySync } from "@/lib/useLibrarySync";
 import { useWatchedSync } from "@/lib/useWatchedSync";
-import { useTabPrefetch } from "@/lib/useTabPrefetch";
+import { speculationWelcome, useTabPrefetch } from "@/lib/useTabPrefetch";
 import { primeNotificationCue } from "@/lib/notificationCue";
 
 import { TopNav } from "@/components/layout/TopNav";
@@ -185,6 +185,15 @@ export default function Home() {
   */
   useEffect(() => {
     const warm = () => {
+      /*
+         Not on a metered or slow connection.
+
+         Ten chunks of code for tabs nobody has opened is a fair trade on a
+         desktop and a rude one on a phone, where it competes with the page
+         being read for the same few connections. Same test the payload sweep
+         uses, so the two agree about what kind of connection this is.
+      */
+      if (!speculationWelcome()) return;
       for (const load of Object.values(chunks)) void load();
     };
     const idle = window.requestIdleCallback;

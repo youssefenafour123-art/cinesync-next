@@ -61,8 +61,13 @@ const SWEEP: TabId[] = ["movies", "tracker", "calendar", "anime", "arabic"];
  * Absent on Safari and Firefox, where the optional chaining leaves this true —
  * the same behaviour as before, which is the right default for a browser that
  * declines to say.
+ *
+ * Exported because the same question governs warming the *code* for other
+ * tabs, which `app/page.tsx` does on idle. That warm-up shipped without this
+ * test and pulled all ten lazy chunks on a phone: 394KB of JavaScript across
+ * 24 files on a Fast 3G run, most of it for tabs nobody had opened.
  */
-function speculationWelcome(): boolean {
+export function speculationWelcome(): boolean {
   const conn = (
     navigator as Navigator & {
       connection?: { saveData?: boolean; effectiveType?: string };
