@@ -38,77 +38,84 @@ export function NotificationArrival() {
     return () => clearTimeout(t);
   }, [arrival, clear]);
 
-  if (!arrival) return null;
-
-  const follow = arrival.kind === "follow";
+  const follow = arrival?.kind === "follow";
 
   const open = () => {
+    if (!arrival) return;
     if (follow && arrival.actorId) openUserProfile(arrival.actorId);
     else if (!follow && arrival.personTmdbId) openPerson(arrival.personTmdbId);
     clear();
   };
 
+  /*
+     `AnimatePresence` stays mounted and the card is what comes and goes.
+     Returning null above it — which is what this did first — unmounts the
+     presence tracker along with its child, so the exit animation never runs
+     and the card vanishes rather than leaving.
+  */
   return (
     <AnimatePresence>
-      <motion.div
-        key={arrival.id}
-        initial={{ opacity: 0, y: -16, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -12, scale: 0.98 }}
-        transition={{ type: "spring", stiffness: 420, damping: 32 }}
-        role="status"
-        aria-live="polite"
-        className="glass-panel fixed inset-x-4 top-[84px] z-[380] flex items-center gap-3 rounded-lg p-3 shadow-[0_12px_44px_rgba(0,0,0,0.55)] sm:inset-x-auto sm:right-4 sm:w-[min(22rem,calc(100vw-2rem))]"
-      >
-        <button type="button" onClick={open} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/15">
-            {follow || !arrival.poster ? (
-              <Icon
-                name={follow ? "person_add" : "movie"}
-                className="text-primary"
-                style={{ fontSize: 20 }}
-              />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={arrival.poster} alt="" className="h-full w-full object-cover" />
-            )}
-          </span>
-
-          <span className="min-w-0 flex-1">
-            {follow ? (
-              <>
-                <span className="block truncate font-body-md text-[14px] text-on-surface">
-                  <span className="font-semibold text-primary">
-                    {arrival.actorUsername ?? "Someone"}
-                  </span>{" "}
-                  started following you
-                </span>
-                <span className="block font-label-md text-[12px] text-on-surface-variant">
-                  Tap to see their profile
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="block font-label-md text-[12px] text-primary">
-                  New from {arrival.personName}
-                </span>
-                <span className="block truncate font-title-lg text-[14px] text-on-surface">
-                  {arrival.title}
-                </span>
-              </>
-            )}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={clear}
-          aria-label="Dismiss"
-          className="shrink-0 rounded-full p-1 text-on-surface-variant transition-colors hover:text-on-surface"
+      {arrival ? (
+        <motion.div
+          key={arrival.id}
+          initial={{ opacity: 0, y: -16, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -12, scale: 0.98 }}
+          transition={{ type: "spring", stiffness: 420, damping: 32 }}
+          role="status"
+          aria-live="polite"
+          className="glass-panel fixed inset-x-4 top-[84px] z-[380] flex items-center gap-3 rounded-lg p-3 shadow-[0_12px_44px_rgba(0,0,0,0.55)] sm:inset-x-auto sm:right-4 sm:w-[min(22rem,calc(100vw-2rem))]"
         >
-          <Icon name="close" className="text-[18px]" />
-        </button>
-      </motion.div>
+          <button type="button" onClick={open} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/15">
+              {follow || !arrival.poster ? (
+                <Icon
+                  name={follow ? "person_add" : "movie"}
+                  className="text-primary"
+                  style={{ fontSize: 20 }}
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={arrival.poster} alt="" className="h-full w-full object-cover" />
+              )}
+            </span>
+
+            <span className="min-w-0 flex-1">
+              {follow ? (
+                <>
+                  <span className="block truncate font-body-md text-[14px] text-on-surface">
+                    <span className="font-semibold text-primary">
+                      {arrival.actorUsername ?? "Someone"}
+                    </span>{" "}
+                    started following you
+                  </span>
+                  <span className="block font-label-md text-[12px] text-on-surface-variant">
+                    Tap to see their profile
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="block font-label-md text-[12px] text-primary">
+                    New from {arrival.personName}
+                  </span>
+                  <span className="block truncate font-title-lg text-[14px] text-on-surface">
+                    {arrival.title}
+                  </span>
+                </>
+              )}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={clear}
+            aria-label="Dismiss"
+            className="shrink-0 rounded-full p-1 text-on-surface-variant transition-colors hover:text-on-surface"
+          >
+            <Icon name="close" className="text-[18px]" />
+          </button>
+        </motion.div>
+      ) : null}
     </AnimatePresence>
   );
 }
