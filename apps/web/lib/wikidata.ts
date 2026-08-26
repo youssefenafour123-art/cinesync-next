@@ -1,5 +1,6 @@
 import "server-only";
 import type { AwardTally, PersonAwards } from "./types";
+import type { AwardGroup, AwardWin, AwardsPayload } from "@cinesync/shared/payloads";
 
 /**
  * What a person has actually won, from Wikidata's structured statements.
@@ -100,11 +101,59 @@ interface SearchResponse {
   query?: { search?: { title?: string }[] };
 }
 
+/**
+ * IMDb id → Wikidata item id. Works for `tt…` and `nm…` alike: P345 is the
+ * IMDb identifier property whatever kind of thing is being identified, which
+ * is why one lookup serves both a film's awards and an actor's.
+ */
+async function resolveItem(imdbId: string): Promise<string | null> {
+  const search = await wd<SearchResponse>(
+    `${API}?action=query&format=json&list=search&srlimit=1` +
+      `&srsearch=${encodeURIComponent(`haswbstatement:P345=${imdbId}`)}`,
+  );
+  return search?.query?.search?.[0]?.title ?? null;
+}
+
+/**
+ * English labels for a set of item ids.
+ *
+ * `wbgetentities` takes at most 50 ids a call, so this pages. Ids are
+ * deduplicated for the lookup only — callers keep their own repeats, because
+ * for an award statement a repeat is a second win.
+ */
+async function labelsFor(ids: string[]): Promise<Map<string, string>> {
+  const labels = new Map<string, string>();
+  const unique = [...new Set(ids)];
+
+  for (let i = 0; i < unique.length; i += 50) {
+    const page = await wd<LabelsResponse>(
+      `${API}?action=wbgetentities&format=json&props=labels&languages=en` +
+        `&ids=${unique.slice(i, i + 50).join("|")}`,
+    );
+    for (const [id, ent] of Object.entries(page?.entities ?? {})) {
+      const value = ent.labels?.en?.value;
+      if (value) labels.set(id, value);
+    }
+  }
+
+  return labels;
+}
+
+/** One `award received` statement, with the qualifiers worth reading. */
+interface AwardClaim {
+  mainsnak?: { datavalue?: { value?: { id?: string } } };
+  qualifiers?: {
+    /** point in time — the year it was given. */
+    P585?: { datavalue?: { value?: { time?: string } } }[];
+    /** for work — what a *person* won it for. */
+    P1686?: { datavalue?: { value?: { id?: string } } }[];
+    /** winner — who won it, on a *title's* statement. */
+    P1346?: { datavalue?: { value?: { id?: string } } }[];
+  };
+}
+
 interface ClaimsResponse {
-  entities?: Record<
-    string,
-    { claims?: { P166?: { mainsnak?: { datavalue?: { value?: { id?: string } } } }[] } }
-  >;
+  entities?: Record<string, { claims?: { P166?: AwardClaim[] } }>;
 }
 
 interface LabelsResponse {
@@ -181,40 +230,16 @@ function phrase(t: AwardTally): string {
 export async function fetchPersonAwards(imdbId: string): Promise<PersonAwards | null> {
   if (!/^nm\d+$/.test(imdbId)) return null;
 
-  const search = await wd<SearchResponse>(
-    `${API}?action=query&format=json&list=search&srlimit=1` +
-      `&srsearch=${encodeURIComponent(`haswbstatement:P345=${imdbId}`)}`,
-  );
-  const qid = search?.query?.search?.[0]?.title;
-  if (!qid) return null;
-
-  const entity = await wd<ClaimsResponse>(
-    `${API}?action=wbgetentities&format=json&props=claims&ids=${encodeURIComponent(qid)}`,
-  );
-  const claims = entity?.entities?.[qid]?.claims?.P166 ?? [];
+  const claims = await awardClaims(imdbId);
   if (!claims.length) return null;
 
-  // The statements point at award items by id; the labels are a second call.
-  // Ids are deduplicated for the *lookup* only — the claim list keeps its
-  // repeats, because a repeat is a second win.
   const ids = claims.map((c) => c.mainsnak?.datavalue?.value?.id).filter(Boolean) as string[];
-  const unique = [...new Set(ids)];
-  if (!unique.length) return null;
+  if (!ids.length) return null;
 
-  const labels = new Map<string, string>();
-  // wbgetentities takes at most 50 ids per call. Only the busiest careers get
-  // past one page.
-  for (let i = 0; i < unique.length; i += 50) {
-    const page = await wd<LabelsResponse>(
-      `${API}?action=wbgetentities&format=json&props=labels&languages=en` +
-        `&ids=${unique.slice(i, i + 50).join("|")}`,
-    );
-    for (const [id, ent] of Object.entries(page?.entities ?? {})) {
-      const value = ent.labels?.en?.value;
-      if (value) labels.set(id, value);
-    }
-  }
-
+  // Only the award ids here. The qualifiers cost more labels to resolve and
+  // this is on the person route's critical path; the itemised view asks for
+  // them separately, and only when somebody opens it.
+  const labels = await labelsFor(ids);
   const tallies = tally(ids.map((id) => labels.get(id)).filter(Boolean) as string[]);
   if (!tallies.length) return null;
 
@@ -222,4 +247,97 @@ export async function fetchPersonAwards(imdbId: string): Promise<PersonAwards | 
     label: tallies.slice(0, SHOWN).map(phrase).join(" · "),
     tallies,
   };
+}
+
+/** The `award received` statements on whatever item an IMDb id resolves to. */
+async function awardClaims(imdbId: string): Promise<AwardClaim[]> {
+  const qid = await resolveItem(imdbId);
+  if (!qid) return [];
+
+  const entity = await wd<ClaimsResponse>(
+    `${API}?action=wbgetentities&format=json&props=claims&ids=${encodeURIComponent(qid)}`,
+  );
+  return entity?.entities?.[qid]?.claims?.P166 ?? [];
+}
+
+/** "+2016-01-01T00:00:00Z" → "2016". Wikidata times carry a leading sign. */
+function yearOf(time?: string): string | undefined {
+  const year = time?.slice(1, 5);
+  return year && /^\d{4}$/.test(year) ? year : undefined;
+}
+
+/**
+ * Every recognised award, itemised — category, year, and the other half of the
+ * credit.
+ *
+ * The lazy half of the feature, and deliberately its own route rather than
+ * more fields on the badge. The badge is on every person profile and every
+ * details modal; this is three requests and a second round of label lookups,
+ * and almost nobody opens it. Making the profile pay for it would have been
+ * the wrong trade in exactly the way `enrich` versus `titleRuntimes` was.
+ *
+ * Serves titles and people from one implementation, because Wikidata models
+ * them the same way. The only asymmetry is which qualifier carries the other
+ * half of the credit: a person's statement says what they won it *for*
+ * (P1686, a work), a title's says *who* won it (P1346, a person). Both land in
+ * `detail`, and which one it is follows from what was asked about.
+ */
+export async function fetchAwardDetail(imdbId: string): Promise<AwardsPayload> {
+  const empty: AwardsPayload = { groups: [], others: 0 };
+  if (!/^(tt|nm)\d+$/.test(imdbId)) return empty;
+
+  const claims = await awardClaims(imdbId);
+  if (!claims.length) return empty;
+
+  const rows = claims.map((c) => ({
+    award: c.mainsnak?.datavalue?.value?.id,
+    year: yearOf(c.qualifiers?.P585?.[0]?.datavalue?.value?.time),
+    // Whichever of the two the statement carries. They never both appear.
+    detail:
+      c.qualifiers?.P1686?.[0]?.datavalue?.value?.id ??
+      c.qualifiers?.P1346?.[0]?.datavalue?.value?.id,
+  }));
+
+  const labels = await labelsFor(
+    rows.flatMap((r) => [r.award, r.detail]).filter(Boolean) as string[],
+  );
+
+  const grouped = new Map<string, AwardWin[]>();
+  let others = 0;
+
+  for (const row of rows) {
+    const label = row.award ? labels.get(row.award) : undefined;
+    if (!label) continue;
+
+    const body = BODIES.find((b) => b.test.test(label));
+    if (!body) {
+      // The long tail — festival prizes, critics' circles, state honours. The
+      // badge already excludes them and the list says only how many there are.
+      others += 1;
+      continue;
+    }
+
+    const wins = grouped.get(body.one) ?? [];
+    wins.push({
+      // The heading already says the body, so the row says the category. A
+      // label with no "for" clause — the Palme d'Or — keeps its whole name,
+      // which is the only sensible thing to print for an award with no
+      // categories.
+      category: label.replace(/^.*? for /, "") || label,
+      year: row.year,
+      detail: row.detail ? labels.get(row.detail) : undefined,
+    });
+    grouped.set(body.one, wins);
+  }
+
+  const groups: AwardGroup[] = BODIES.filter((b) => grouped.has(b.one)).map((b) => {
+    const wins = (grouped.get(b.one) as AwardWin[]).sort((x, y) =>
+      // Oldest first: a career reads forwards, and an undated statement is
+      // pinned to the end rather than pretending to be the earliest.
+      (x.year ?? "9999").localeCompare(y.year ?? "9999"),
+    );
+    return { award: wins.length === 1 ? b.one : b.many, wins };
+  });
+
+  return { groups, others };
 }

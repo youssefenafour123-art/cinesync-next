@@ -11,6 +11,7 @@ import { AddToList } from "@/components/ui/AddToList";
 import { useTrailer } from "@/lib/useTrailer";
 import { PosterImage } from "@/components/ui/PosterImage";
 import { ScoresPanel } from "@/components/ui/ScoresPanel";
+import { AwardsBadge } from "@/components/ui/AwardsBadge";
 import { Icon } from "@/components/ui/Icon";
 import { ModalShell } from "./ModalShell";
 
@@ -213,37 +214,31 @@ export function DetailsModal({ item }: { item: MediaItem }) {
         </h1>
 
         {/*
-           What it won, in one pill.
+           What it won, and — when pressed — which ones.
 
            Under the title rather than in the credits row below, because it is
-           the kind of thing that changes whether someone keeps reading — and
-           it arrives after the title does, so a row that reflows would be
-           worse than a line that appears.
+           the kind of thing that changes whether someone keeps reading, and
+           because it arrives after the title does: a row that reflowed would
+           be worse than a line that appears.
 
-           Two tones, and the difference matters more than it looks: gold only
-           when OMDb named a body *and* the title actually won it. "Nominated
-           for 7 Oscars" is The Shawshank Redemption, and dressing that in the
-           winner's colour would be a lie about the most famous loss in the
-           Academy's history. `parseAwards` keeps the two apart; this only has
-           to not throw the distinction away again.
+           The gold-versus-neutral decision is `AwardsBadge`'s to render and
+           `parseAwards`' to make. "Nominated for 7 Oscars" is The Shawshank
+           Redemption, and dressing that in the winner's colour would be a lie
+           about the most famous loss in the Academy's history.
+
+           `summary` is OMDb's own sentence. It goes to the panel because the
+           totals there are OMDb's while the itemised list is Wikidata's, and
+           the two records do not agree — see the note in the component.
         */}
         {awards ? (
-          <div className="mb-4 -mt-1 flex">
-            <span
-              title={awards.detail}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-label-md text-[12px] tracking-normal ${
-                awards.won && awards.headline
-                  ? "border-[#f5c518]/35 bg-[#f5c518]/10 text-[#f5c518]"
-                  : "border-white/12 bg-white/[0.04] text-on-surface-variant"
-              }`}
-            >
-              <Icon
-                name={awards.won && awards.headline ? "emoji_events" : "workspace_premium"}
-                fill={awards.won && awards.headline}
-                style={{ fontSize: "15px" }}
-              />
-              {awards.label}
-            </span>
+          <div className="mb-4 -mt-1">
+            <AwardsBadge
+              imdbId={full.imdbId}
+              label={awards.label}
+              won={awards.won && awards.headline}
+              tooltip={awards.detail}
+              summary={awards.detail}
+            />
           </div>
         ) : null}
 

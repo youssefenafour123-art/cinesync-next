@@ -7,6 +7,7 @@ import { useFetch } from "@/lib/useFetch";
 import { useAppStore } from "@/store/useAppStore";
 import { Icon } from "@/components/ui/Icon";
 import { PosterImage } from "@/components/ui/PosterImage";
+import { AwardsBadge } from "@/components/ui/AwardsBadge";
 import { FollowPersonButton } from "@/components/profile/FollowPersonButton";
 import { ErrorState, LoadingState } from "@/components/ui/States";
 import { ModalShell } from "./ModalShell";
@@ -136,7 +137,8 @@ function Header({ person }: { person: Person }) {
         ) : null}
 
         {/*
-           What they have won.
+           What they have won, and — when pressed — every one of them, with the
+           year and the film.
 
            Always the winner's gold, unlike the badge on a title, and that is a
            property of the source rather than a shortcut. A title's awards are
@@ -146,20 +148,17 @@ function Header({ person }: { person: Person }) {
            property entirely, so a statement reaching here cannot be a near
            miss.
 
-           The badge names the two most prestigious bodies; the rest are in the
-           tooltip, because "3 Academy Awards · 3 Primetime Emmys" is a fact
-           about Meryl Streep and a list of six is a CV.
+           No `summary`, for the same reason: the pill's count and the itemised
+           list are built from the same statements, so unlike a title's they
+           can never disagree and need nothing explaining them.
         */}
         {person.awards ? (
-          <div className="mt-3 flex">
-            <span
-              title={person.awards.tallies.map((t) => `${t.count} ${t.award}`).join(" · ")}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#f5c518]/35 bg-[#f5c518]/10 px-3 py-1 font-label-md text-[12px] tracking-normal text-[#f5c518]"
-            >
-              <Icon name="emoji_events" fill style={{ fontSize: "15px" }} />
-              {person.awards.label}
-            </span>
-          </div>
+          <AwardsBadge
+            imdbId={person.imdbId}
+            label={person.awards.label}
+            won
+            tooltip={person.awards.tallies.map((t) => `${t.count} ${t.award}`).join(" · ")}
+          />
         ) : null}
 
         {/*

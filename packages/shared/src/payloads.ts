@@ -158,6 +158,41 @@ export interface RuntimesPayload {
   runtimes: TitleRuntime[];
 }
 
+/** `GET /api/awards?imdb=tt…` or `?imdb=nm…` */
+export interface AwardWin {
+  /**
+   * The category on its own — "Best Actress", not "Academy Award for Best
+   * Actress". The body is already the group's heading, and repeating it on
+   * every row is most of the width of the row.
+   */
+  category: string;
+  /** Four-digit year, when the statement records one. Many do not. */
+  year?: string;
+  /**
+   * The other half of the credit: the film or show a person won it *for*, or
+   * the person who won it *for* a title. Which one it is follows from what was
+   * asked about, so one field covers both.
+   */
+  detail?: string;
+}
+
+export interface AwardGroup {
+  /** "Academy Awards", "Primetime Emmys" — already plural-matched to `wins`. */
+  award: string;
+  wins: AwardWin[];
+}
+
+export interface AwardsPayload {
+  /** Recognised bodies only, most prestigious first. */
+  groups: AwardGroup[];
+  /**
+   * How many further awards and honours the record holds — festival prizes,
+   * critics' circles, state honours, honorary doctorates. Counted rather than
+   * listed: they are the long tail that made the badge itself need filtering.
+   */
+  others: number;
+}
+
 /** `GET /api/gem` */
 export interface GemPayload {
   /**
