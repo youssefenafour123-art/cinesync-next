@@ -98,6 +98,18 @@ export function useTabPrefetch(active: TabId) {
 
     const sweep = () => {
       if (cancelled || !speculationWelcome()) return;
+
+      /*
+         Nor on a handset, whatever the connection claims.
+
+         `speculationWelcome` reads `effectiveType`, which answers "4g" for a
+         phone on good mobile data — and Chrome never updates it under emulated
+         throttling, so a measured Fast 3G run swept all five tabs anyway,
+         ~850KB of JSON for tabs nobody had opened, while the page they were
+         reading queued behind it. The width test is the one that holds on a
+         phone. `app/page.tsx` gates the tabs' *code* on the same question.
+      */
+      if (!window.matchMedia("(min-width: 640px)").matches) return;
       SWEEP.filter((tab) => tab !== active).forEach((tab, i) => {
         // 300ms apart rather than all at once: a browser will only open so
         // many connections, and a burst would queue the one the visitor is
