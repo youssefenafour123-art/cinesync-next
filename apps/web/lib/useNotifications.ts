@@ -13,6 +13,7 @@ import type { AppNotification, ReleaseAlert } from "./notifications";
 import type { Person } from "./types";
 import { playNotificationCue } from "./notificationCue";
 import { useAppStore } from "@/store/useAppStore";
+import { supabaseBrowser } from "./supabase/client";
 import { endpoints } from "@cinesync/shared/api";
 
 /**
@@ -44,11 +45,13 @@ let checkedFor: string | null = null;
  * Loading once per page load meant the only way to see that someone had
  * followed you was to reload the page.
  *
- * Polling rather than Supabase Realtime: `notifications` is not in the
- * `supabase_realtime` publication, and adding it is a migration run by hand
- * against production for a table whose rows arrive minutes apart. The wake-ups
- * below make the common case immediate anyway — coming back to the tab is what
- * someone does between following and looking.
+ * This used to be the whole delivery mechanism, and it was reported as
+ * notifications not appearing until the bell was pressed — which is exactly
+ * what a poll looks like from the outside when the person is waiting for it.
+ * Pressing the bell forces a read, so the reader was beating the timer every
+ * time. Realtime now does the delivering (see `subscribe` below) and this is
+ * the safety net: it covers a dropped socket, and a deployment where migration
+ * 0009 has not been run and no events will ever arrive.
  */
 const POLL_MS = 45_000;
 
@@ -62,6 +65,54 @@ const POLL_MS = 45_000;
  */
 let live: { userId: string; stop: () => void } | null = null;
 
+/**
+ * Postgres telling this tab, the moment a row lands.
+ *
+ * Filtered server-side by `user_id`, which is belt and braces rather than the
+ * protection: realtime applies the same row-level security a query gets, and
+ * `notifications` has exactly one select policy — `auth.uid() = user_id`. The
+ * filter means the socket does not carry other people's rows to be discarded
+ * here; the policy means it could not have anyway.
+ *
+ * INSERT only. An update is a read receipt and a delete is a clear, and both
+ * of those are things this tab did to itself — it already has the answer.
+ *
+ * The event is a nudge, not the data. It would be a row, and the row would
+ * still need the same shaping `fetchNotifications` does; re-reading the list
+ * costs one query, keeps one code path, and cannot drift from what the panel
+ * shows. `load` announces whatever is new, so the card falls out of it.
+ *
+ * Silent when migration 0009 has not been run: the channel subscribes happily
+ * and no events ever arrive, which is the poll's behaviour and exactly what
+ * this replaced. That is why the poll stays.
+ */
+function subscribe(userId: string): () => void {
+  try {
+    const channel = supabaseBrowser()
+      .channel(`notifications:${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          void refreshSoon(userId);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabaseBrowser().removeChannel(channel);
+    };
+  } catch {
+    // No Supabase configured on this deployment. The bell is empty anyway.
+    return () => {};
+  }
+}
+
 function startLive(userId: string): void {
   if (live?.userId === userId) return;
   live?.stop();
@@ -72,6 +123,7 @@ function startLive(userId: string): void {
     if (document.visibilityState === "visible") void load(userId);
   };
 
+  const unsubscribe = subscribe(userId);
   const timer = setInterval(wake, POLL_MS);
   document.addEventListener("visibilitychange", wake);
   window.addEventListener("focus", wake);
@@ -79,6 +131,7 @@ function startLive(userId: string): void {
   live = {
     userId,
     stop() {
+      unsubscribe();
       clearInterval(timer);
       document.removeEventListener("visibilitychange", wake);
       window.removeEventListener("focus", wake);
@@ -143,6 +196,21 @@ function announceNew(userId: string, next: AppNotification[]): void {
   */
   useAppStore.getState().announceArrival(arrivals[0]);
   void playNotificationCue();
+}
+
+/**
+ * A read that is guaranteed to have started after the caller's event.
+ *
+ * `load` shares an in-flight promise, which is right for the poll and wrong
+ * here: a read that began a moment *before* the row was committed can return
+ * without it, and handing that promise back would report the row as delivered
+ * when it was missed. Waiting for the overlap to settle first costs one extra
+ * query in a rare race and is the difference between instant and
+ * instant-unless-you-were-unlucky.
+ */
+async function refreshSoon(userId: string): Promise<void> {
+  if (inFlight) await inFlight.catch(() => {});
+  await load(userId);
 }
 
 async function load(userId: string): Promise<void> {
