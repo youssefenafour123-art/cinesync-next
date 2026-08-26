@@ -166,6 +166,34 @@ export interface CriticalReception {
   consensus?: string;
 }
 
+/**
+ * What a title has actually won, from OMDb's one-line `Awards` string.
+ *
+ * OMDb writes that field to a consistent grammar — an optional headline naming
+ * one major body, then the totals across every body:
+ *
+ *   "Won 7 Oscars. 370 wins & 378 nominations total"
+ *   "Nominated for 7 Oscars. 21 wins & 43 nominations total"
+ *   "Won 59 Primetime Emmys. 396 wins & 655 nominations total"
+ *   "8 wins & 15 nominations total"
+ *   "6 wins total"
+ *
+ * It is parsed on the server rather than in the component, so the two things a
+ * badge has to get right — *what* it won and whether it won at all — are
+ * decided once, next to the string they come from. Presenting a nomination as
+ * a win is the one mistake this feature can make.
+ */
+export interface Awards {
+  /** Badge text: "Won 7 Oscars", "Nominated for 7 Oscars", "21 wins". */
+  label: string;
+  /** True when the label describes wins rather than only nominations. */
+  won: boolean;
+  /** True when OMDb named a specific body — an Oscar, an Emmy, a Golden Globe. */
+  headline: boolean;
+  /** OMDb's full sentence, for the badge's tooltip. */
+  detail: string;
+}
+
 export interface Scores {
   imdb?: { value: string; votes?: string };
   rottenTomatoes?: string;
@@ -181,6 +209,8 @@ export interface Scores {
   /** Wikipedia article `critics` was summarised from. */
   criticsSource?: string;
   criticsSourceTitle?: string;
+  /** What it won, when OMDb has anything to say. See `Awards`. */
+  awards?: Awards;
   /** Written reviews. These are TMDB community reviewers, not press critics. */
   reviews: {
     author: string;

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { CreditedPerson, MediaItem } from "@/lib/types";
+import type { CreditedPerson, MediaItem, Scores } from "@/lib/types";
+import { useFetch } from "@/lib/useFetch";
 import { useAppStore } from "@/store/useAppStore";
 import { useLibraryActions } from "@/lib/useLibraryActions";
 import { useWatchlist } from "@/lib/useWatchlist";
@@ -89,6 +90,21 @@ export function DetailsModal({ item }: { item: MediaItem }) {
       : item;
 
   const meta = [full.year, full.genres?.slice(0, 3).join(", "), full.runtime].filter(Boolean);
+
+  /*
+     What it won, for the badge under the title.
+
+     The same URL `ScoresPanel` asks for, character for character — `useFetch`
+     dedupes by URL and shares the promise, so the panel further down this
+     modal and this badge are one request, not two. Anything else here would
+     have meant a second round trip to OMDb for a field the first one already
+     returned.
+  */
+  const scoresUrl = full.imdbId
+    ? `/api/scores/${full.imdbId}?kind=${full.kind}${full.tmdbId ? `&tmdb=${full.tmdbId}` : ""}`
+    : null;
+  const { data: scores } = useFetch<Scores>(scoresUrl);
+  const awards = scores?.awards;
 
   /*
      Is this still to come?
@@ -195,6 +211,41 @@ export function DetailsModal({ item }: { item: MediaItem }) {
         <h1 className="mb-4 font-display-md text-headline-lg leading-tight text-on-surface md:text-display-md">
           {full.title}
         </h1>
+
+        {/*
+           What it won, in one pill.
+
+           Under the title rather than in the credits row below, because it is
+           the kind of thing that changes whether someone keeps reading — and
+           it arrives after the title does, so a row that reflows would be
+           worse than a line that appears.
+
+           Two tones, and the difference matters more than it looks: gold only
+           when OMDb named a body *and* the title actually won it. "Nominated
+           for 7 Oscars" is The Shawshank Redemption, and dressing that in the
+           winner's colour would be a lie about the most famous loss in the
+           Academy's history. `parseAwards` keeps the two apart; this only has
+           to not throw the distinction away again.
+        */}
+        {awards ? (
+          <div className="mb-4 -mt-1 flex">
+            <span
+              title={awards.detail}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-label-md text-[12px] tracking-normal ${
+                awards.won && awards.headline
+                  ? "border-[#f5c518]/35 bg-[#f5c518]/10 text-[#f5c518]"
+                  : "border-white/12 bg-white/[0.04] text-on-surface-variant"
+              }`}
+            >
+              <Icon
+                name={awards.won && awards.headline ? "emoji_events" : "workspace_premium"}
+                fill={awards.won && awards.headline}
+                style={{ fontSize: "15px" }}
+              />
+              {awards.label}
+            </span>
+          </div>
+        ) : null}
 
         <div className="mb-8 flex flex-wrap items-center gap-6 border-b border-white/10 pb-6">
           {full.director ? (
