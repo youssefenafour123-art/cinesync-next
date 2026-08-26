@@ -106,7 +106,7 @@ export function ProfileTab() {
         ))}
       </nav>
 
-      {view === "profile" ? <Overview /> : null}
+      {view === "profile" ? <Overview onOpenView={setView} /> : null}
       {view === "people" ? <PeoplePanel /> : null}
       {view === "lists" ? <ListsSection /> : null}
       {view === "watchlist" ? <WatchlistSection /> : null}
@@ -313,7 +313,10 @@ function AvatarPicker({
  * Overview
  * ------------------------------------------------------------------ */
 
-function Overview() {
+/** How many of the watchlist the overview shows before handing over to the tab. */
+const RECENT_LIMIT = 6;
+
+function Overview({ onOpenView }: { onOpenView: (view: View) => void }) {
   const watchlist = useWatchlist();
   const watched = useWatched();
   const { custom, ready: listsReady } = useLists();
@@ -416,6 +419,32 @@ function Overview() {
         <section className="glass-panel rounded-lg p-6">
           <div className="mb-4 flex items-center justify-between gap-4">
             <h3 className="font-title-lg text-title-lg text-on-surface">Recently saved</h3>
+
+            {/*
+               The way to the rest of it.
+
+               This shelf is the six most recent of a watchlist that can hold
+               hundreds, and until now that was the whole story it told: no
+               count, and nothing saying the other titles existed, let alone
+               where. The Watchlist tab has always held them — it just had to
+               be guessed at.
+
+               Hidden when six is all there is, because "See all 4" on a shelf
+               showing four is a control that goes nowhere new.
+            */}
+            {watchlist.items.length > RECENT_LIMIT ? (
+              <button
+                type="button"
+                onClick={() => onOpenView("watchlist")}
+                className="group flex shrink-0 items-center gap-1 rounded-full bg-surface-container px-4 py-1.5 font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
+              >
+                See all {watchlist.items.length}
+                <Icon
+                  name="chevron_right"
+                  className="text-[18px] transition-transform duration-200 group-hover:translate-x-0.5"
+                />
+              </button>
+            ) : null}
           </div>
           {!watchlist.ready ? (
             <div className="h-40 animate-pulse rounded-xl bg-surface-container" />
@@ -430,7 +459,7 @@ function Overview() {
                ones — no separate activity log to keep in step with the list it
                would be describing.
             */
-            <SavedTitleGrid items={watchlist.items.slice(0, 6)} />
+            <SavedTitleGrid items={watchlist.items.slice(0, RECENT_LIMIT)} />
           )}
         </section>
       </div>
