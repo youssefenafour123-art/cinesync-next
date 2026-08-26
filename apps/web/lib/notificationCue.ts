@@ -3,18 +3,20 @@
 import { useSourcesStore } from "@/store/useSourcesStore";
 
 /**
- * The sound a notification makes.
+ * The sound a notification makes: a projector starting up.
  *
- * Synthesised with the Web Audio API rather than shipped as a file, for three
- * reasons: an mp3 is a request and a cache entry for 700ms of audio; a
- * recognisable cue from a streaming service is somebody's registered sound
- * mark and not ours to borrow; and the shape of it is easier to tune here than
- * in an audio editor.
+ * A reel's shutter ticking as the motor finds its speed, the motor humming up
+ * underneath it, and a warm chime as the lamp settles. About 900ms.
  *
- * What it plays is the cinema idea rather than any particular cinema's: a low
- * hit that drops in pitch like a struck drum in a trailer, and a fifth
- * ringing above it a beat later. Around 700ms end to end, quiet enough to sit
- * under whatever else is happening.
+ * Synthesised rather than shipped as a file, for three reasons: an audio clip
+ * is a network request and a cache entry for under a second of sound; a sound
+ * lifted from a film or a series is the studio's copyright, and the famous
+ * stingers — the streaming ta-dum, the deep note before a feature — are
+ * registered sound marks that a public site may not simply borrow; and the
+ * shape of a cue is easier to tune as numbers than in an editor.
+ *
+ * So it is the cinema itself rather than anything filmed in one: nobody owns
+ * the sound of a projector.
  */
 
 /**
@@ -74,6 +76,146 @@ export function primeNotificationCue(): () => void {
   };
 }
 
+/**
+ * A fifth of a second of white noise, made once and shared.
+ *
+ * Every shutter tick is a slice of this through a bandpass — a mechanical
+ * click has no pitch, so an oscillator is the wrong source for one. Building a
+ * buffer per tick would allocate a dozen times per cue for identical noise.
+ */
+const noiseFor = new WeakMap<BaseAudioContext, AudioBuffer>();
+
+function noise(audio: BaseAudioContext): AudioBuffer {
+  const cached = noiseFor.get(audio);
+  if (cached) return cached;
+
+  const buffer = audio.createBuffer(1, Math.floor(audio.sampleRate * 0.2), audio.sampleRate);
+  const samples = buffer.getChannelData(0);
+  for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+
+  noiseFor.set(audio, buffer);
+  return buffer;
+}
+
+/**
+ * Schedules the cue onto any audio context.
+ *
+ * Split out from `playNotificationCue` so the same graph can be rendered into
+ * an `OfflineAudioContext` — which needs no user gesture and runs in a hidden
+ * tab — and checked for the shape it is supposed to have. A sound nobody can
+ * measure is a sound nobody can be sure shipped.
+ */
+export function scheduleProjectorCue(audio: BaseAudioContext, at: number): void {
+  /*
+     Levels tuned by rendering this into an `OfflineAudioContext` and reading
+     the peak back, not by ear — the browser this was built in cannot play
+     audio at all. The set below peaks at 0.46 with no clipping, and the first
+     shutter tick is audible rather than a whisper the chime arrives to
+     explain.
+  */
+  const out = audio.createGain();
+  out.gain.value = 1;
+  out.connect(audio.destination);
+
+  /* ---- the motor, coming up to speed ---- */
+
+  // A triangle rather than a sine: a projector motor is a machine, and the
+  // extra harmonics are what stop this reading as a test tone.
+  const motor = audio.createOscillator();
+  motor.type = "triangle";
+  motor.frequency.setValueAtTime(42, at);
+  motor.frequency.exponentialRampToValueAtTime(64, at + 0.35);
+  motor.frequency.setValueAtTime(64, at + 0.55);
+  motor.frequency.exponentialRampToValueAtTime(52, at + 0.85);
+
+  const motorTone = audio.createBiquadFilter();
+  motorTone.type = "lowpass";
+  motorTone.frequency.value = 260;
+
+  const motorLevel = audio.createGain();
+  motorLevel.gain.setValueAtTime(0.0001, at);
+  motorLevel.gain.exponentialRampToValueAtTime(0.2, at + 0.18);
+  motorLevel.gain.setValueAtTime(0.2, at + 0.5);
+  motorLevel.gain.exponentialRampToValueAtTime(0.0001, at + 0.9);
+
+  motor.connect(motorTone);
+  motorTone.connect(motorLevel);
+  motorLevel.connect(out);
+  motor.start(at);
+  motor.stop(at + 0.95);
+
+  /* ---- the shutter, accelerating ---- */
+
+  /*
+     Twelve ticks whose spacing closes from 88ms to 30ms.
+
+     The acceleration is the whole illusion: evenly spaced clicks are a clock,
+     and a projector that is already at speed has not started up. They get
+     slightly louder as they tighten, the way a reel does as it takes the
+     tension.
+  */
+  const TICKS = 12;
+  let when = at;
+  for (let i = 0; i < TICKS; i++) {
+    const progress = i / (TICKS - 1);
+    const tick = audio.createBufferSource();
+    tick.buffer = noise(audio);
+    // A different slice of the buffer each time, so twelve identical clicks
+    // don't come out as one stuttering artefact.
+    tick.playbackRate.value = 0.9 + Math.random() * 0.3;
+
+    // Narrow and high: the sound is a shutter blade passing, not a thud.
+    const body = audio.createBiquadFilter();
+    body.type = "bandpass";
+    body.frequency.value = 1800 + progress * 700;
+    body.Q.value = 1.4;
+
+    const level = audio.createGain();
+    level.gain.setValueAtTime(0.0001, when);
+    level.gain.exponentialRampToValueAtTime(0.18 + progress * 0.12, when + 0.004);
+    level.gain.exponentialRampToValueAtTime(0.0001, when + 0.05);
+
+    tick.connect(body);
+    body.connect(level);
+    level.connect(out);
+    tick.start(when, Math.random() * 0.1, 0.06);
+
+    when += 0.088 - progress * 0.058;
+  }
+
+  /* ---- the lamp settling ---- */
+
+  /*
+     C5 with its octave a whisper above it, arriving as the shutter reaches
+     speed. Slower attack than anything else here — 30ms — because a lamp
+     coming up is the one part of this that is not mechanical, and a sharp
+     attack would make it another click.
+  */
+  const chimeTone = audio.createBiquadFilter();
+  chimeTone.type = "lowpass";
+  chimeTone.frequency.value = 3000;
+  chimeTone.connect(out);
+
+  for (const [freq, level, delay] of [
+    [523.25, 0.34, 0.5],
+    [1046.5, 0.116, 0.52],
+  ] as const) {
+    const tone = audio.createOscillator();
+    tone.type = "sine";
+    tone.frequency.value = freq;
+
+    const toneLevel = audio.createGain();
+    toneLevel.gain.setValueAtTime(0.0001, at + delay);
+    toneLevel.gain.exponentialRampToValueAtTime(level, at + delay + 0.03);
+    toneLevel.gain.exponentialRampToValueAtTime(0.0001, at + delay + 0.42);
+
+    tone.connect(toneLevel);
+    toneLevel.connect(chimeTone);
+    tone.start(at + delay);
+    tone.stop(at + delay + 0.45);
+  }
+}
+
 export async function playNotificationCue(): Promise<void> {
   // The preference lives with the rest of the app's settings, so muting it is
   // one switch in the same place as everything else.
@@ -89,65 +231,7 @@ export async function playNotificationCue(): Promise<void> {
     // whenever it did start.
     if (audio.state !== "running") return;
 
-    const t = audio.currentTime;
-
-    /*
-       One filter for the whole cue, so it reads as warm rather than as two
-       beeps. 2.6kHz keeps the shimmer bright without any of it becoming
-       sharp on laptop speakers, which exaggerate that range.
-    */
-    const shape = audio.createBiquadFilter();
-    shape.type = "lowpass";
-    shape.frequency.value = 2600;
-
-    const master = audio.createGain();
-    master.gain.value = 0.55;
-    shape.connect(master);
-    master.connect(audio.destination);
-
-    // The hit: 110Hz falling to 55Hz, which is the drop that reads as weight
-    // rather than as a low beep.
-    const hit = audio.createOscillator();
-    hit.type = "sine";
-    hit.frequency.setValueAtTime(110, t);
-    hit.frequency.exponentialRampToValueAtTime(55, t + 0.28);
-
-    const hitLevel = audio.createGain();
-    // Ramps from near-silence rather than from zero: `exponentialRampToValue`
-    // cannot start at 0, and a linear attack on a sine this low clicks.
-    hitLevel.gain.setValueAtTime(0.0001, t);
-    hitLevel.gain.exponentialRampToValueAtTime(0.34, t + 0.015);
-    hitLevel.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
-
-    hit.connect(hitLevel);
-    hitLevel.connect(shape);
-    hit.start(t);
-    hit.stop(t + 0.55);
-
-    /*
-       The shimmer: E5 and the B5 a fifth above it, entering just behind the
-       hit. A fifth rather than an octave — an octave doubles the same note and
-       lands as a single brighter tone, where the fifth is the interval that
-       sounds like an announcement.
-    */
-    for (const [freq, level, delay] of [
-      [659.25, 0.1, 0.07],
-      [987.77, 0.055, 0.09],
-    ] as const) {
-      const tone = audio.createOscillator();
-      tone.type = "triangle";
-      tone.frequency.value = freq;
-
-      const toneLevel = audio.createGain();
-      toneLevel.gain.setValueAtTime(0.0001, t + delay);
-      toneLevel.gain.exponentialRampToValueAtTime(level, t + delay + 0.03);
-      toneLevel.gain.exponentialRampToValueAtTime(0.0001, t + delay + 0.6);
-
-      tone.connect(toneLevel);
-      toneLevel.connect(shape);
-      tone.start(t + delay);
-      tone.stop(t + delay + 0.65);
-    }
+    scheduleProjectorCue(audio, audio.currentTime);
   } catch {
     // Audio is decoration on top of a notification that has already arrived.
     // Nothing here is worth surfacing to anyone.
