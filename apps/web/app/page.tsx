@@ -186,14 +186,21 @@ export default function Home() {
   useEffect(() => {
     const warm = () => {
       /*
-         Not on a metered or slow connection.
+         Not on a metered or slow connection, and not on a phone.
 
          Ten chunks of code for tabs nobody has opened is a fair trade on a
-         desktop and a rude one on a phone, where it competes with the page
-         being read for the same few connections. Same test the payload sweep
-         uses, so the two agree about what kind of connection this is.
+         desktop and a rude one on a handset. `speculationWelcome` is the same
+         test the payload sweep uses — saveData, or a slow effective type — but
+         it answers "yes" for a phone on good 4G, and Chrome does not update
+         `effectiveType` under emulated throttling either, so a measured run
+         still pulled all 394KB across 24 files.
+
+         The width test is the one that actually holds on a handset. What it
+         costs is a few hundred milliseconds the first time a phone opens a
+         second tab, against every phone paying for nine tabs it never opened.
       */
       if (!speculationWelcome()) return;
+      if (!window.matchMedia("(min-width: 640px)").matches) return;
       for (const load of Object.values(chunks)) void load();
     };
     const idle = window.requestIdleCallback;
