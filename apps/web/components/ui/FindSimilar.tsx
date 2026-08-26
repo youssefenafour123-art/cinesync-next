@@ -225,7 +225,7 @@ function CandidateList({
             title={item.title}
             className="group text-left"
           >
-            <div className="aspect-[2/3] overflow-hidden rounded-xl bg-surface-container ring-primary/0 transition-all duration-200 group-hover:ring-2 group-hover:ring-primary/60">
+            <div className="poster-live aspect-[2/3] overflow-hidden rounded-xl bg-surface-container ring-primary/0 transition-all duration-200 group-hover:ring-2 group-hover:ring-primary/60">
               <PosterImage src={item.poster} alt={item.title} className="h-full w-full object-cover" />
             </div>
             <p className="mt-2 truncate font-title-lg text-[14px] text-on-surface">{item.title}</p>

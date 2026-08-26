@@ -97,7 +97,7 @@ export function SavedTitleGrid({
               }}
               onHoverStart={() => setActive(t.imdbId)}
               onHoverEnd={() => setActive((id) => (id === t.imdbId ? null : id))}
-              className="group relative aspect-[2/3] cursor-pointer overflow-hidden rounded-xl bg-surface-container"
+              className="poster-live group relative aspect-[2/3] cursor-pointer overflow-hidden rounded-xl bg-surface-container"
             >
               {/*
                  `poster` is whatever the title wore when it was saved, and a

@@ -305,7 +305,7 @@ function CreditGrid({
           }
           className="text-left"
         >
-          <div className="aspect-[2/3] overflow-hidden rounded-xl border border-white/5 bg-surface-container">
+          <div className="poster-live aspect-[2/3] overflow-hidden rounded-xl border border-white/5 bg-surface-container">
             <PosterImage src={c.poster} alt={c.title} className="h-full w-full object-cover" />
           </div>
           <h4 className="mt-2 truncate font-title-lg text-[14px] text-on-surface">{c.title}</h4>

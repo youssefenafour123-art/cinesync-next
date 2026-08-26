@@ -116,7 +116,7 @@ function CuratedCard({ item }: { item: MediaItem }) {
     >
       <TiltCard
         onClick={() => openDetails(item)}
-        className="movie-card poster-glow group relative aspect-[2/3] cursor-pointer overflow-hidden rounded border border-white/5 bg-surface-container"
+        className="movie-card poster-glow poster-live group relative aspect-[2/3] cursor-pointer overflow-hidden rounded border border-white/5 bg-surface-container"
       >
         <PosterImage src={item.poster}
             variants={item.posters} alt={item.title} className="h-full w-full object-cover" />

@@ -370,11 +370,13 @@ body {
 }
 
 .poster-glow,
+.poster-live,
 .carousel-poster {
   position: relative;
 }
 
 .poster-glow::after,
+.poster-live::after,
 .carousel-poster::after {
   content: "";
   position: absolute;
@@ -439,6 +441,8 @@ body {
    read as a highlight rather than as ambience. */
 .poster-glow:hover::after,
 .poster-glow:focus-within::after,
+.poster-live:hover::after,
+.poster-live:focus-within::after,
 .carousel-item:hover .carousel-poster::after,
 .carousel-item:focus-within .carousel-poster::after {
   opacity: 1;
@@ -446,10 +450,67 @@ body {
 }
 
 .poster-glow:hover,
+.poster-live:hover,
 .carousel-item:hover .carousel-poster {
   box-shadow:
     0 16px 40px rgba(0, 0, 0, 0.7),
     0 0 26px rgba(78, 222, 163, 0.3);
+}
+
+/* ---- The sheen ----
+   A band of light crossing the artwork once, each time the pointer arrives.
+
+   The ring above says "this card is live"; the sheen says "you are on it". It
+   is deliberately a single pass rather than a loop — something that keeps
+   sweeping reads as a loading skeleton, and a poster nobody is pointing at
+   should be still.
+
+   Transform and opacity only, so it is a compositor job: no layout, no
+   repaint of the artwork underneath, and only ever one card running at a time.
+   That matters here because the ring it joins is the expensive half — a conic
+   gradient through a mask composite, which is why that one is paused until
+   hover too.
+
+   `::before` rather than a second element, because these tiles are shared by
+   ten screens and half of them build the tile in JSX that has no room for a
+   spare div. Restarting the animation on re-entry is what the pair of
+   `animation-name: none` / hover rules below does: an animation that has
+   finished will not replay just because the pointer came back.
+
+   It clips to the tile's own corner radius through `border-radius: inherit`,
+   and every host it is applied to carries `overflow-hidden`.
+*/
+.poster-live::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.13) 47%,
+    rgba(255, 255, 255, 0.28) 51%,
+    rgba(255, 255, 255, 0.13) 55%,
+    transparent 64%
+  );
+  transform: translateX(-120%);
+}
+
+.poster-live:hover::before,
+.poster-live:focus-within::before {
+  opacity: 1;
+  animation: cs-poster-sheen 0.9s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+@keyframes cs-poster-sheen {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(120%);
+  }
 }
 
 @keyframes cs-edge-spin {

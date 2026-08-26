@@ -163,7 +163,7 @@ export function LibraryTab() {
                 key={`${h.id}-${h.timestamp}`}
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="group relative aspect-[2/3] overflow-hidden rounded-xl bg-surface-container"
+                className="poster-live group relative aspect-[2/3] overflow-hidden rounded-xl bg-surface-container"
               >
                 <PosterImage
                   src={metahubPoster(h.id)}

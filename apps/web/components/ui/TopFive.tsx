@@ -185,7 +185,7 @@ function TopFiveRow({
                   open?.();
                 }
               }}
-              className={`group relative aspect-[2/3] cursor-pointer overflow-hidden rounded-xl bg-surface-container transition-shadow ${
+              className={`poster-live group relative aspect-[2/3] cursor-pointer overflow-hidden rounded-xl bg-surface-container transition-shadow ${
                 active ? "ring-2 ring-primary" : ""
               }`}
             >

@@ -66,7 +66,7 @@ export function PosterCard({ item, variant = "rail", showMeta = true }: PosterCa
       aria-label={`Open details for ${item.title}`}
     >
       <div
-        className="poster-glow group relative aspect-[2/3] overflow-hidden rounded-[14px] border border-white/5 bg-surface-container shadow-[0_12px_30px_rgba(0,0,0,0.55)] transition-all duration-300"
+        className="poster-glow poster-live group relative aspect-[2/3] overflow-hidden rounded-[14px] border border-white/5 bg-surface-container shadow-[0_12px_30px_rgba(0,0,0,0.55)] transition-all duration-300"
         style={{ "--cs-edge-delay": edgeDelay(item.key) } as React.CSSProperties}
       >
         <PosterImage
