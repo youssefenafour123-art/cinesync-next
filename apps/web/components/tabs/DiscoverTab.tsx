@@ -6,6 +6,7 @@ import type { DiscoverPayload } from "@/app/api/discover/route";
 import { useFetch } from "@/lib/useFetch";
 import { BecauseYouWatched } from "@/components/ui/BecauseYouWatched";
 import { Carousel } from "@/components/ui/Carousel";
+import { GemOfTheWeek } from "@/components/ui/GemOfTheWeek";
 import { HeroSlider } from "@/components/ui/HeroSlider";
 import { PosterCard } from "@/components/ui/PosterCard";
 import { ErrorState, PosterSkeleton } from "@/components/ui/States";
@@ -37,6 +38,17 @@ export function DiscoverTab({ onWall }: { onWall: (posters: string[]) => void })
            it, and it renders nothing at all when there is nothing to say.
         */}
         <BecauseYouWatched />
+
+        {/*
+           Above the rails and below anything personal, which is where a
+           standing recommendation belongs: it is not about you, so it does not
+           outrank "because you watched", and it is one title rather than
+           twenty, so putting it under a rail would bury it. Independent of
+           `/api/discover` for the same reason the rail above it is — its own
+           small request, its own failure, and nothing at all on screen when it
+           has no answer.
+        */}
+        <GemOfTheWeek />
 
         {loading && !data ? (
           <Carousel title="Most Watched Movies" showArrows={false}>

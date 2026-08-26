@@ -158,6 +158,22 @@ export interface RuntimesPayload {
   runtimes: TitleRuntime[];
 }
 
+/** `GET /api/gem` */
+export interface GemPayload {
+  /**
+   * One well-regarded, little-seen title, the same one for everybody for the
+   * whole week. Null when the pool came back empty, which is a card that does
+   * not render rather than an error.
+   */
+  item: MediaItem | null;
+  /** The ISO week the pick belongs to, e.g. "2026-W35". */
+  week: string;
+  /** When the next pick takes over: midnight UTC on the coming Monday, as an ISO string. */
+  nextAt: string;
+  /** Why this one — assembled from what TMDB and IMDb actually report, never written. */
+  why: string;
+}
+
 /** `GET /api/imdb-list?url=` */
 export interface ImdbListPayload {
   name: string;

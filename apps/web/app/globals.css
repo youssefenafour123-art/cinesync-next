@@ -797,6 +797,128 @@ body {
   display: none;
 }
 
+/* --------------------------------------------------- gem of the week */
+
+/*
+   Discover's one-title recommendation.
+
+   Colour, light and the two pseudo-elements only — never radius, padding or
+   layout, for the reason `.hero-stat` gives above: the rules in this file are
+   unlayered, so they beat any Tailwind utility on the same element, and the
+   card's `rounded-[20px] p-3` would lose silently if these had an opinion
+   about it.
+*/
+.gem-card {
+  background-image: linear-gradient(
+    100deg,
+    rgba(78, 222, 163, 0.16) 0%,
+    rgba(79, 172, 254, 0.1) 40%,
+    rgba(18, 18, 18, 0) 76%
+  );
+  background-color: rgba(18, 18, 18, 0.72);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition:
+    border-color 0.35s ease,
+    transform 0.35s ease;
+}
+
+.gem-card:hover,
+.gem-card:focus-within {
+  border-color: rgba(78, 222, 163, 0.3);
+  transform: translateY(-2px);
+}
+
+/*
+   A slow light sweep, on a timer rather than on hover.
+
+   Hover would have made the card inert on every phone, and this is a strip
+   that has to earn a second glance without being loud. Idle for most of the
+   cycle, then one pass — closer to a highlight catching the edge of something
+   than to an animation. The blanket reduced-motion reset at the bottom of this
+   file stops it like everything else here.
+*/
+.gem-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.09) 50%,
+    transparent 62%
+  );
+  transform: translateX(-130%);
+  animation: cs-gem-sweep 9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes cs-gem-sweep {
+  0%,
+  76% {
+    transform: translateX(-130%);
+  }
+  100% {
+    transform: translateX(130%);
+  }
+}
+
+/* The label reads as the one gilded thing on an otherwise quiet card. */
+.gem-label {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-primary) 0%,
+    #d8e2ff 34%,
+    var(--color-primary) 68%,
+    #d8e2ff 100%
+  );
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: cs-gem-shimmer 7s linear infinite;
+}
+
+@keyframes cs-gem-shimmer {
+  to {
+    background-position: -240% 0;
+  }
+}
+
+/*
+   How far through the week the pick is.
+
+   The width comes from `--gem-progress`, which the component sets to 0 for one
+   frame and then to the real figure — so the transition below is what draws
+   the bar in on arrival, and the same rule animates the minute-by-minute
+   creep afterwards.
+*/
+.gem-week {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  z-index: 2;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.gem-week::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--gem-progress, 0%);
+  background: linear-gradient(90deg, rgba(78, 222, 163, 0.12), var(--color-primary));
+  box-shadow: 0 0 12px rgba(78, 222, 163, 0.5);
+  transition: width 1.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 /* ---- Carousels (Tracker / Anime tabs) ---- */
 .carousel-section {
   margin-bottom: 48px;

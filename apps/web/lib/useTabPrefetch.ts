@@ -17,7 +17,10 @@ import type { TabId } from "@/store/useAppStore";
 function urlsFor(tab: TabId): string[] {
   switch (tab) {
     case "discover":
-      return ["/api/discover"];
+      // Both of the tab's own requests. The gem is a few hundred bytes beside
+      // the catalogue payload, and warming it is what stops the strip popping
+      // in under the hero a moment after everything else has settled.
+      return ["/api/discover", "/api/gem"];
     case "movies":
       // Both halves of the Curated tab, which fetches its rails and its mood
       // rail independently and would otherwise show one and skeleton the other.
