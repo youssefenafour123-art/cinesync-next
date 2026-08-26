@@ -13,6 +13,16 @@ import {
 } from "@/components/ui/SavedTitleGrid";
 import { Icon } from "@/components/ui/Icon";
 
+/**
+ * How many titles a shelf shows before it offers the rest.
+ *
+ * The same 18 the Stremio library section uses, and for the same reason: three
+ * rows of six on a desktop is a shelf, and everything after that is a wall.
+ * The watched list reached 97 titles the day it started filling itself from
+ * Stremio, which is what made this necessary rather than tidy.
+ */
+const PAGE = 18;
+
 /*
    Lifted out of LibraryTab so the profile screen can render the same two
    sections instead of growing its own copy.
@@ -33,6 +43,7 @@ import { Icon } from "@/components/ui/Icon";
  */
 export function WatchlistSection() {
   const { items, ready, signedIn, toggle, pending } = useWatchlist();
+  const [expanded, setExpanded] = useState(false);
 
   if (!signedIn) return null;
 
@@ -45,14 +56,46 @@ export function WatchlistSection() {
       ) : items.length === 0 ? (
         <EmptyShelf>Nothing saved yet. Open any title and press Watchlist to keep it here.</EmptyShelf>
       ) : (
-        <SavedTitleGrid
-          items={items}
-          onRemove={(t) => void toggle(toMediaItem(t))}
-          removeLabel={(t) => `Remove ${t.title} from your watchlist`}
-          busy={pending}
-        />
+        <>
+          <SavedTitleGrid
+            items={expanded ? items : items.slice(0, PAGE)}
+            onRemove={(t) => void toggle(toMediaItem(t))}
+            removeLabel={(t) => `Remove ${t.title} from your watchlist`}
+            busy={pending}
+          />
+          <ShowAll count={items.length} expanded={expanded} onToggle={() => setExpanded((v) => !v)} />
+        </>
       )}
     </section>
+  );
+}
+
+/**
+ * The control that reveals the rest of a shelf.
+ *
+ * Renders nothing when the shelf is already showing everything — a "Show all
+ * 11" under eleven posters is a control that leads nowhere.
+ */
+function ShowAll({
+  count,
+  expanded,
+  onToggle,
+}: {
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  if (count <= PAGE) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      className="mt-6 font-label-md text-label-md text-primary transition-opacity hover:opacity-80"
+    >
+      {expanded ? "Show fewer" : `Show all ${count}`}
+    </button>
   );
 }
 
@@ -65,6 +108,7 @@ export function WatchlistSection() {
  */
 export function WatchedSection() {
   const { items, ready, signedIn, toggle, pending } = useWatched();
+  const [expanded, setExpanded] = useState(false);
 
   if (!signedIn) return null;
 
@@ -80,13 +124,16 @@ export function WatchedSection() {
           Stremio account and it lands here on its own.
         </EmptyShelf>
       ) : (
-        <SavedTitleGrid
-          items={items}
-          onRemove={(t) => void toggle(toMediaItem(t))}
-          removeLabel={(t) => `Remove ${t.title} from your watched list`}
-          removeIcon="visibility_off"
-          busy={pending}
-        />
+        <>
+          <SavedTitleGrid
+            items={expanded ? items : items.slice(0, PAGE)}
+            onRemove={(t) => void toggle(toMediaItem(t))}
+            removeLabel={(t) => `Remove ${t.title} from your watched list`}
+            removeIcon="visibility_off"
+            busy={pending}
+          />
+          <ShowAll count={items.length} expanded={expanded} onToggle={() => setExpanded((v) => !v)} />
+        </>
       )}
     </section>
   );
