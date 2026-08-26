@@ -8,12 +8,14 @@ import { useMotionPreference } from "@/lib/useReducedMotion";
 import { useSourcesStore } from "@/store/useSourcesStore";
 import { useLibrarySync } from "@/lib/useLibrarySync";
 import { useTabPrefetch } from "@/lib/useTabPrefetch";
+import { primeNotificationCue } from "@/lib/notificationCue";
 
 import { TopNav } from "@/components/layout/TopNav";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { AmbientBackground } from "@/components/layout/AmbientBackground";
 
 import { DiscoverTab } from "@/components/tabs/DiscoverTab";
+import { NotificationArrival } from "@/components/layout/NotificationArrival";
 import { Toast } from "@/components/ui/Toast";
 import { QuoteTicker } from "@/components/ui/QuoteTicker";
 
@@ -196,6 +198,16 @@ export default function Home() {
   useEffect(() => hydrate(), [hydrate]);
 
   /*
+     Wakes the audio clock on the first click or keypress.
+
+     Every notification this app plays a sound for arrives from a background
+     poll, which is never a user gesture — and a browser keeps an AudioContext
+     suspended until it has seen one. Priming early means the context is
+     already running by the time anything lands.
+  */
+  useEffect(() => primeNotificationCue(), []);
+
+  /*
     Mirror the motion preference onto <html> so CSS can read it.
 
     The GSAP and Framer effects take it from `useReducedMotion`, but the hero
@@ -284,6 +296,8 @@ export default function Home() {
           <UserProfileModal key={`user-${viewedUserId}`} userId={viewedUserId} />
         ) : null}
       </AnimatePresence>
+
+      <NotificationArrival />
 
       <Toast />
 

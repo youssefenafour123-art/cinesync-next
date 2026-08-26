@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import type { AppNotification } from "@/lib/notifications";
 import type { LibraryEntry, LibrarySnapshot, WatchedTitle } from "@/lib/stremio";
 import type { MediaItem } from "@/lib/types";
 
@@ -109,6 +110,19 @@ interface AppState {
   toast: string | null;
   showToast: (message: string) => void;
   clearToast: () => void;
+
+  /*
+     The notification that just arrived, for the card that announces it.
+
+     Separate from `toast`, which is the app talking about what you just did —
+     a failed save, a copied link. This is somebody else's action reaching you,
+     it stays longer, and it opens something when pressed. Sharing one slot
+     would mean a sync error could silently replace the only sign that anyone
+     followed you.
+  */
+  arrival: AppNotification | null;
+  announceArrival: (notification: AppNotification) => void;
+  clearArrival: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -199,4 +213,8 @@ export const useAppStore = create<AppState>((set) => ({
   toast: null,
   showToast: (toast) => set({ toast }),
   clearToast: () => set({ toast: null }),
+
+  arrival: null,
+  announceArrival: (arrival) => set({ arrival }),
+  clearArrival: () => set({ arrival: null }),
 }));

@@ -11,6 +11,8 @@ import {
 } from "./notifications";
 import type { AppNotification, ReleaseAlert } from "./notifications";
 import type { Person } from "./types";
+import { playNotificationCue } from "./notificationCue";
+import { useAppStore } from "@/store/useAppStore";
 import { endpoints } from "@cinesync/shared/api";
 
 /**
@@ -94,11 +96,52 @@ function publish() {
   for (const fn of subscribers) fn();
 }
 
+/**
+ * Notices what the last read did not contain.
+ *
+ * The bell only ever grew a number. Someone had to open the panel to find out
+ * that anything had happened, which for the one notification this app sends
+ * unprompted — somebody followed you — meant nobody found out at all until
+ * they went looking.
+ *
+ * Ids rather than a count: a count goes up and down as things are read and
+ * cleared, and would announce the same follow twice the first time an older
+ * notification was deleted. `seen` is only ever added to.
+ */
+let seen: Set<string> | null = null;
+
+function announceNew(next: AppNotification[]): void {
+  /*
+     The first read of a session teaches this what already exists rather than
+     announcing it. Otherwise every reload would replay whatever was unread as
+     though it had just happened.
+  */
+  if (seen === null) {
+    seen = new Set(next.map((n) => n.id));
+    return;
+  }
+
+  const arrivals = next.filter((n) => !seen!.has(n.id) && !n.read);
+  for (const n of next) seen.add(n.id);
+
+  if (arrivals.length === 0) return;
+
+  /*
+     The newest one, not all of them. `fetchNotifications` returns newest
+     first, and three cards stacking up from one poll is a worse way to learn
+     that three things happened than one card and a bell reading 3.
+  */
+  useAppStore.getState().announceArrival(arrivals[0]);
+  void playNotificationCue();
+}
+
 async function load(userId: string): Promise<void> {
   if (inFlight) return inFlight;
   inFlight = (async () => {
     try {
-      items = await fetchNotifications();
+      const next = await fetchNotifications();
+      announceNew(next);
+      items = next;
     } catch {
       // An unreadable list is an empty bell, not an error banner. Nothing here
       // is worth interrupting someone who came to browse films.
@@ -178,6 +221,9 @@ export function useNotifications() {
       items = [];
       loadedFor = null;
       checkedFor = null;
+      // A different account has a different history; without this the next
+      // sign-in would treat every one of their notifications as brand new.
+      seen = null;
       stopLive();
       publish();
       return;

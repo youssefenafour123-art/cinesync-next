@@ -14,6 +14,8 @@ const SETTINGS_KEY = "cineSyncSettings";
 export interface AppSettings {
   autoSync: boolean;
   pushNotifications: boolean;
+  /** The cue a follow or a release announcement plays. See `notificationCue`. */
+  notificationSound: boolean;
   oledMode: boolean;
   tmdbKey: string;
   traktId: string;
@@ -22,6 +24,9 @@ export interface AppSettings {
 const DEFAULT_SETTINGS: AppSettings = {
   autoSync: true,
   pushNotifications: false,
+  // On by default: a notification nobody hears is the thing that was being
+  // complained about. One switch in Settings turns it off.
+  notificationSound: true,
   oledMode: true,
   tmdbKey: "",
   traktId: "",

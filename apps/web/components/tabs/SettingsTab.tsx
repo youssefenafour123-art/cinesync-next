@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useSourcesStore, type AppSettings } from "@/store/useSourcesStore";
+import { playNotificationCue } from "@/lib/notificationCue";
 import { useAppStore } from "@/store/useAppStore";
 import {
   setMotionPreference,
@@ -110,6 +111,19 @@ export function SettingsTab() {
                   description="Show a toast when a sync finishes or an item fails."
                   checked={settings.pushNotifications}
                   onChange={(v) => updateSettings({ pushNotifications: v })}
+                />
+              </div>
+              <div className="border-t border-white/5 pt-4">
+                <Toggle
+                  label="Notification Sound"
+                  description="Play a short cue when someone follows you or a film you're waiting on is announced."
+                  checked={settings.notificationSound}
+                  onChange={(v) => {
+                    updateSettings({ notificationSound: v });
+                    // Turning it on plays it once, because a sound setting you
+                    // cannot hear while choosing it is a guess.
+                    if (v) void playNotificationCue();
+                  }}
                 />
               </div>
             </div>
