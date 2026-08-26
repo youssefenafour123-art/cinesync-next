@@ -136,6 +136,33 @@ function Header({ person }: { person: Person }) {
         ) : null}
 
         {/*
+           What they have won.
+
+           Always the winner's gold, unlike the badge on a title, and that is a
+           property of the source rather than a shortcut. A title's awards are
+           parsed out of OMDb's prose, where "Nominated for 7 Oscars" is a
+           sentence that has to be told apart from a win. These are Wikidata
+           `award received` statements — nominations live in a different
+           property entirely, so a statement reaching here cannot be a near
+           miss.
+
+           The badge names the two most prestigious bodies; the rest are in the
+           tooltip, because "3 Academy Awards · 3 Primetime Emmys" is a fact
+           about Meryl Streep and a list of six is a CV.
+        */}
+        {person.awards ? (
+          <div className="mt-3 flex">
+            <span
+              title={person.awards.tallies.map((t) => `${t.count} ${t.award}`).join(" · ")}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#f5c518]/35 bg-[#f5c518]/10 px-3 py-1 font-label-md text-[12px] tracking-normal text-[#f5c518]"
+            >
+              <Icon name="emoji_events" fill style={{ fontSize: "15px" }} />
+              {person.awards.label}
+            </span>
+          </div>
+        ) : null}
+
+        {/*
            Following a person is followed *work*, not a social connection —
            there is no account behind Denis Villeneuve here — so it sits with
            the biography rather than anywhere near the follower counts on a

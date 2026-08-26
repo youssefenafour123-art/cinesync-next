@@ -108,6 +108,29 @@ export interface PersonCredit {
   voteCount?: number;
 }
 
+/** How many of one body's awards somebody has won. */
+export interface AwardTally {
+  /** Already pluralised for `count` — "Academy Award" / "Academy Awards". */
+  award: string;
+  count: number;
+}
+
+/**
+ * What a person has won, from Wikidata's `award received` statements.
+ *
+ * Separate from `Awards`, which is a title's, and not merely a second shape
+ * for the same idea: that one is parsed out of a sentence and has to work out
+ * whether a win is even being described, while these are structured statements
+ * that can only mean a win. Only the bodies worth naming are counted — see
+ * `apps/web/lib/wikidata.ts` for why a person's raw list is not usable as-is.
+ */
+export interface PersonAwards {
+  /** Badge text, the top bodies only: "3 Academy Awards · 9 Golden Globes". */
+  label: string;
+  /** Every recognised body, most prestigious first — the badge's tooltip. */
+  tallies: AwardTally[];
+}
+
 export interface Person {
   tmdbId: number;
   name: string;
@@ -119,6 +142,8 @@ export interface Person {
   placeOfBirth?: string;
   profile?: string;
   imdbId?: string;
+  /** What they have won, when Wikidata knows of anything worth naming. */
+  awards?: PersonAwards;
   knownFor: PersonCredit[];
   upcoming: PersonCredit[];
   filmography: PersonCredit[];
