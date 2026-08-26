@@ -2,23 +2,35 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { useAppStore } from "@/store/useAppStore";
+import { useWatchTime } from "@/lib/useWatchTime";
 import { CountUp } from "@/components/ui/CountUp";
 import { Icon } from "@/components/ui/Icon";
 
 /**
  * How long the account has spent watching, and how many episodes that was.
  *
- * The profile has said since it was built that CineSync "has never tracked a
- * minute of playback", and leading with hours watched would have been the
- * invented-profile problem all over again. Connecting a Stremio account
- * changed that: `overallTimeWatched` is a real counter kept by the player,
- * summed here across every row it has — 1,022 hours on the account this was
- * built against. Nothing on this card is estimated, and it does not render at
- * all for someone with nothing behind it.
+ * Two sources, added together and kept distinguishable — see `useWatchTime`,
+ * which does the arithmetic:
  *
- * `overallTimeWatched` rather than `timeWatched`: the second is only the
- * current video's tally and came to a tenth of the real figure.
+ *   - a connected Stremio account's `overallTimeWatched`, a real counter kept
+ *     by the player and summed across every row it has;
+ *   - the app's own Watched list, priced at each title's published length —
+ *     a film's runtime, a series' whole run.
+ *
+ * The second half is why this card exists at all in an account with no
+ * Stremio connected: ticking a series here used to move the "Watched" tally
+ * and leave the headline figure untouched, which read as broken because it
+ * was. It is an estimate, and the footnote under the figure says which part
+ * of the total it is rather than letting the two blur together.
+ *
+ * `overallTimeWatched` rather than `timeWatched` on the Stremio side: the
+ * second is only the current video's tally and came to a tenth of the real
+ * figure.
+ *
+ * There is no "Live" badge. It claimed the number refreshed as you watched,
+ * which was only ever true of the Stremio half and only on a focus event;
+ * on the marked half it was plainly wrong, and a pulsing dot next to a figure
+ * that has not moved in a week is decoration pretending to be telemetry.
  */
 
 /** The ways the same duration can be said, in the order the card cycles them. */
@@ -60,21 +72,27 @@ function parts(ms: number, unit: Unit): Part[] {
   }
 }
 
+/** Whole hours, for the footnote that splits the total into its two sources. */
+function hours(ms: number): string {
+  return Math.round(ms / HOUR).toLocaleString();
+}
+
 export function WatchTimeCard() {
-  const watchedMs = useAppStore((s) => s.watchedMs);
-  const episodes = useAppStore((s) => s.episodesWatched);
+  const { ms, playedMs, markedMs, episodes, markedTitles } = useWatchTime();
   const [unit, setUnit] = useState<Unit>("calendar");
 
-  const shown = useMemo(() => parts(watchedMs, unit), [watchedMs, unit]);
+  const shown = useMemo(() => parts(ms, unit), [ms, unit]);
 
   /*
      Nothing at all when there is nothing to show.
 
-     Without a connected Stremio account this is zero, and a card announcing
-     "0h — time spent" is the decoration the profile rebuild removed: it takes
-     the best position on the screen to say nothing.
+     Neither a connected library nor a single title marked watched leaves this
+     at zero, and a card announcing "0h — time spent" is the decoration the
+     profile rebuild removed: it takes the best position on the screen to say
+     nothing. It is no longer the same as "no Stremio account" — an account
+     that has only ever ticked titles here now has a figure.
   */
-  if (watchedMs <= 0) return null;
+  if (ms <= 0) return null;
 
   const cycle = () => setUnit((u) => UNITS[(UNITS.indexOf(u) + 1) % UNITS.length]);
 
@@ -90,19 +108,7 @@ export function WatchTimeCard() {
       aria-label={`Time spent watching, shown in ${unit === "calendar" ? "months, days and hours" : unit}. Press to change units.`}
       className="hero-stat panel-glow group w-full rounded-lg p-6 text-left"
     >
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="font-title-lg text-[15px] text-on-surface/80">Time spent watching</h3>
-
-        {/*
-           The pulse is the "this is live" mark: the figure moves when the
-           library is read again, which happens whenever this tab is returned
-           to. It is CSS, so the app's reduced-motion reset stills it.
-        */}
-        <span className="flex items-center gap-1.5 font-label-md text-[11px] uppercase tracking-wider text-primary/80">
-          <span className="live-dot" aria-hidden="true" />
-          Live
-        </span>
-      </div>
+      <h3 className="font-title-lg text-[15px] text-on-surface/80">Time spent watching</h3>
 
       {/*
          Keyed on the unit, so React swaps the line and the new figure springs
@@ -143,6 +149,27 @@ export function WatchTimeCard() {
           className="text-[14px] opacity-0 transition-opacity group-hover:opacity-70 group-focus-visible:opacity-70"
         />
       </p>
+
+      {/*
+         Where the number came from, but only when there is something to
+         disambiguate.
+
+         An account with one source needs no breakdown — a line reading "1,022h
+         played" under a figure of 1,022 hours is noise. It appears the moment
+         the two are mixed, because that is the moment the total stops being a
+         single kind of fact, and it names the estimated half as estimated.
+      */}
+      {markedMs > 0 && playedMs > 0 ? (
+        <p className="mt-2 font-label-md text-[11px] leading-relaxed text-on-surface/45">
+          {hours(playedMs)}h played in Stremio · {hours(markedMs)}h estimated from{" "}
+          {markedTitles === 1 ? "1 title" : `${markedTitles} titles`} you marked watched
+        </p>
+      ) : markedMs > 0 ? (
+        <p className="mt-2 font-label-md text-[11px] leading-relaxed text-on-surface/45">
+          Estimated from the full length of{" "}
+          {markedTitles === 1 ? "the title" : `the ${markedTitles} titles`} you marked watched
+        </p>
+      ) : null}
 
       <div className="mt-5 border-t border-white/15 pt-4">
         <CountUp

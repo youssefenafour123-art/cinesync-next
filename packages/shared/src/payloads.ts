@@ -137,6 +137,27 @@ export interface SimilarPayload {
   items: MediaItem[];
 }
 
+/** `GET /api/runtimes?ids=tt0111161:movie:278,tt0903747:series` */
+export interface TitleRuntime {
+  imdbId: string;
+  /**
+   * How long the whole thing is, in minutes: a film's runtime, or a series'
+   * entire run — every episode of every season.
+   *
+   * Absent titles are absent from the response rather than present with a
+   * zero. TMDB has no episode runtime for a fair number of shows, and a
+   * guessed forty-two minutes an episode is exactly the invented figure the
+   * profile has always refused to print.
+   */
+  minutes: number;
+  /** Series only: episodes in that run, so a finished-episodes count can move too. */
+  episodes?: number;
+}
+
+export interface RuntimesPayload {
+  runtimes: TitleRuntime[];
+}
+
 /** `GET /api/imdb-list?url=` */
 export interface ImdbListPayload {
   name: string;

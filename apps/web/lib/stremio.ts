@@ -93,6 +93,17 @@ export interface LibrarySnapshot {
   watchedMs?: number;
   /** Completed videos on series rows, which is what an episode finished is. */
   episodes?: number;
+  /**
+   * Every title the account has played *any* of, finished or not.
+   *
+   * `watched` below is the stricter list and cannot stand in for this. The
+   * profile's time card now adds an estimate for titles marked watched by hand
+   * on CineSync, and it has to leave out anything Stremio has already counted
+   * real milliseconds for — including a film abandoned twenty minutes in,
+   * which is in `watchedMs` and is *not* in `watched`. Without this set that
+   * title would be counted twice: once measured, once estimated in full.
+   */
+  played?: Set<string>;
 
   /**
    * Everything the account has *finished*, which is a different question from
@@ -151,6 +162,11 @@ export function mergeSnapshots(snapshots: LibrarySnapshot[]): LibrarySnapshot {
     */
     if (snap.watchedMs) merged.watchedMs = (merged.watchedMs ?? 0) + snap.watchedMs;
     if (snap.episodes) merged.episodes = (merged.episodes ?? 0) + snap.episodes;
+
+    // A union rather than a sum: the same film played on two logins is one
+    // title Stremio has already measured, and this set only ever answers
+    // "keep your hands off this one".
+    for (const id of snap.played ?? []) (merged.played ??= new Set()).add(id);
 
     for (const title of snap.watched ?? []) {
       const seen = (merged.watched ??= []);
@@ -349,6 +365,11 @@ export async function fetchLibrarySnapshot(authKey: string): Promise<LibrarySnap
         snapshot.watchedMs = (snapshot.watchedMs ?? 0) + (state.overallTimeWatched ?? 0);
         if (row.type === "series") {
           snapshot.episodes = (snapshot.episodes ?? 0) + (state.timesWatched ?? 0);
+        }
+        // Whatever contributed to the two counters above is a title the
+        // profile must not also estimate. See `played` on the snapshot.
+        if ((state.overallTimeWatched ?? 0) > 0 || (state.timesWatched ?? 0) > 0) {
+          (snapshot.played ??= new Set()).add(id);
         }
       }
     }

@@ -138,6 +138,58 @@ export async function existsInCinemeta(kind: MediaKind, imdbId: string): Promise
   }
 }
 
+/**
+ * Minutes out of a Cinemeta runtime string.
+ *
+ * The field is IMDb's, formatted for a reader rather than for arithmetic, and
+ * it arrives in more than one shape: "142 min" for most things, "1h 30min" for
+ * some, and occasionally with a stray character in it — Fullmetal Alchemist:
+ * Brotherhood comes back "54S min". So the hours-and-minutes form is matched
+ * first and anything else falls back to the leading number, which is right for
+ * every one of those.
+ */
+export function runtimeMinutes(raw?: string): number | undefined {
+  if (!raw) return undefined;
+
+  const hoursAndMinutes = /(\d+)\s*h(?:\s*(\d+)\s*m)?/i.exec(raw);
+  if (hoursAndMinutes) {
+    return Number(hoursAndMinutes[1]) * 60 + Number(hoursAndMinutes[2] ?? 0);
+  }
+
+  const minutes = /(\d+)/.exec(raw);
+  return minutes ? Number(minutes[1]) : undefined;
+}
+
+/**
+ * How long one episode of a series is — or one film, where TMDB has no answer.
+ *
+ * This exists because TMDB's `episode_run_time` is empty for a great many
+ * shows: Game of Thrones, Stranger Things and Better Call Saul all come back
+ * with `[]`. The only other number on that response is `last_episode_to_air`,
+ * and using it is worse than having nothing — finales run long, so it priced
+ * Game of Thrones at 80 minutes an episode against a real 57, and Stranger
+ * Things at 129 against 65. Cinemeta carries IMDb's own per-episode runtime
+ * and gets all three right.
+ *
+ * Cached for a day, and against the same URL `fetchImdbRating` uses with the
+ * same revalidation — so a title already enriched costs nothing to price.
+ */
+export async function fetchRuntimeMinutes(
+  kind: MediaKind,
+  imdbId: string,
+): Promise<number | undefined> {
+  try {
+    const res = await fetch(`${BASE}/meta/${kind}/${imdbId}.json`, {
+      next: { revalidate: 86400 },
+    });
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as { meta?: CinemetaMeta };
+    return runtimeMinutes(data.meta?.runtime);
+  } catch {
+    return undefined;
+  }
+}
+
 /** Just the IMDb rating — used to upgrade TMDB's vote_average where possible. */
 export async function fetchImdbRating(
   kind: MediaKind,

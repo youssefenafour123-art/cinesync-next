@@ -466,36 +466,6 @@ body {
    solid centre that stays put, and a ring that expands and fades. Transform
    and opacity only, so it costs the compositor and nothing else.
 */
-.live-dot {
-  position: relative;
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 9999px;
-  background: var(--color-primary);
-}
-
-.live-dot::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--color-primary);
-  animation: cs-live-pulse 2s ease-out infinite;
-}
-
-@keyframes cs-live-pulse {
-  0% {
-    transform: scale(1);
-    opacity: 0.55;
-  }
-  70%,
-  100% {
-    transform: scale(2.8);
-    opacity: 0;
-  }
-}
-
 /* ---- The sheen ----
    A band of light crossing the artwork once, each time the pointer arrives.
 

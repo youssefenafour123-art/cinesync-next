@@ -114,6 +114,13 @@ interface AppState {
   /** Milliseconds played across the connected libraries, and episodes finished. */
   watchedMs: number;
   episodesWatched: number;
+  /**
+   * Titles a connected player has already measured, finished or abandoned.
+   *
+   * Read by `useWatchTime`, which estimates a length for everything marked
+   * watched by hand and has to skip whatever `watchedMs` already covers.
+   */
+  playedIds: Set<string>;
   setLibrary: (snapshot: LibrarySnapshot) => void;
   markInLibrary: (id: string) => void;
   unmarkInLibrary: (id: string) => void;
@@ -182,6 +189,7 @@ export const useAppStore = create<AppState>((set) => ({
   stremioWatched: [],
   watchedMs: 0,
   episodesWatched: 0,
+  playedIds: new Set<string>(),
   setLibrary: (snapshot) =>
     /*
        Absent means "not recomputed", not "empty".
@@ -204,6 +212,8 @@ export const useAppStore = create<AppState>((set) => ({
       // watch state and must not zero what does.
       watchedMs: snapshot.watchedMs ?? s.watchedMs,
       episodesWatched: snapshot.episodes ?? s.episodesWatched,
+      // And once more: membership-only snapshots carry no watch state.
+      playedIds: snapshot.played ?? s.playedIds,
       libraryItems: snapshot.items ?? s.libraryItems,
     })),
   markInLibrary: (id) =>

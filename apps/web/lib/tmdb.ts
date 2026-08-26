@@ -1,5 +1,5 @@
 import "server-only";
-import { fetchImdbRating } from "./cinemeta";
+import { fetchImdbRating, fetchRuntimeMinutes } from "./cinemeta";
 import type {
   CreditedPerson,
   MediaItem,
@@ -8,7 +8,7 @@ import type {
   PersonCredit,
   SearchResults,
 } from "./types";
-import type { LookupTitle } from "@cinesync/shared/payloads";
+import type { LookupTitle, TitleRuntime } from "@cinesync/shared/payloads";
 
 const BASE = "https://api.themoviedb.org/3";
 const IMG = "https://image.tmdb.org/t/p";
@@ -2081,3 +2081,93 @@ export const ANIME_FILTER = {
   with_genres: "16",
   with_original_language: "ja",
 } as const;
+
+/* ------------------------------------------------------------------ *
+ * Runtimes
+ * ------------------------------------------------------------------ */
+
+/** One title to look a runtime up for. `tmdbId` saves the `/find` round trip. */
+export interface RuntimeRef {
+  imdbId: string;
+  kind: MediaKind;
+  tmdbId?: number;
+}
+
+/**
+ * How long a set of titles is, for the profile's watch-time figure.
+ *
+ * Deliberately not `enrich`: that costs a detail request *and* an IMDb rating
+ * lookup per title and returns forty fields, where this needs two numbers.
+ * A watched list of ninety titles is ninety of these, so the difference is the
+ * feature being affordable or not.
+ *
+ * Cached for a day rather than the usual hour. A film's runtime is the one
+ * fact in this file that genuinely does not change, and the same watched list
+ * is asked about on every visit to the profile.
+ *
+ * A title this cannot answer for is simply missing from the result. See the
+ * note on `TitleRuntime.minutes`: an invented episode length would put an
+ * invented number under a heading that has always been careful not to.
+ */
+export async function titleRuntimes(refs: RuntimeRef[]): Promise<TitleRuntime[]> {
+  const found = await Promise.all(refs.map((ref) => runtimeOf(ref).catch(() => null)));
+  return found.filter((r): r is TitleRuntime => r !== null);
+}
+
+async function runtimeOf(ref: RuntimeRef): Promise<TitleRuntime | null> {
+  let tmdbId = ref.tmdbId;
+  let kind = ref.kind;
+
+  /*
+     A Stremio-sourced title has an IMDb id and nothing else — `useWatchedSync`
+     writes what the library row carries, and that is all it carries. The
+     `/find` result is cached for a day like the detail below it, so the extra
+     hop is paid once per title rather than once per visit.
+
+     The resolved kind wins over the supplied one: Cinemeta and TMDB disagree
+     often enough about miniseries, and asking `/movie/{id}` for a series id
+     returns somebody else's film rather than an error.
+  */
+  if (!tmdbId) {
+    const hit = await findByImdbId(ref.imdbId);
+    if (!hit) return null;
+    tmdbId = hit.tmdbId;
+    kind = hit.kind;
+  }
+
+  const detail = await tmdb<TmdbDetail>(
+    `/${kind === "movie" ? "movie" : "tv"}/${tmdbId}`,
+    {},
+    86400,
+  );
+
+  if (kind === "movie") {
+    // TMDB answers this for essentially every film; Cinemeta is the fallback
+    // for the handful it does not, and costs nothing when it is not reached.
+    const minutes = detail.runtime || (await fetchRuntimeMinutes("movie", ref.imdbId)) || 0;
+    return minutes > 0 ? { imdbId: ref.imdbId, minutes } : null;
+  }
+
+  /*
+     A series is its whole run: every episode of every season, which is what
+     "I've watched this show" means when someone marks it.
+
+     Cinemeta first, deliberately. `episode_run_time` is TMDB's own average and
+     is empty for a large share of modern television — Game of Thrones,
+     Stranger Things and Better Call Saul all come back `[]` — and the only
+     other figure on that response is the last episode to air, which runs long
+     because finales do. See `fetchRuntimeMinutes` for the measured difference.
+
+     The episode *count* still comes from TMDB. Cinemeta's `videos` list
+     includes specials and recaps, and the run people mean is the numbered one.
+
+     A show neither provider can price contributes nothing rather than a
+     plausible-looking guess.
+  */
+  const perEpisode =
+    (await fetchRuntimeMinutes("series", ref.imdbId)) || detail.episode_run_time?.[0] || 0;
+  const episodes = detail.number_of_episodes ?? 0;
+  if (perEpisode <= 0 || episodes <= 0) return null;
+
+  return { imdbId: ref.imdbId, minutes: perEpisode * episodes, episodes };
+}

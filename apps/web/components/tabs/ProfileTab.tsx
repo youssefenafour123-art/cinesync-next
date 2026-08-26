@@ -333,19 +333,24 @@ function Overview({ onOpenView }: { onOpenView: (view: View) => void }) {
       {/* ---- Left rail ---- */}
       <aside className="w-full shrink-0 space-y-6 lg:w-72">
         {/*
-           Above "Titles saved" when there is a connected library behind it,
-           and absent entirely when there is not. Hours watched is the more
+           Above "Titles saved" whenever there is anything behind it, and
+           absent entirely when there is not. Hours watched is the more
            interesting number of the two, and it is the one this profile could
-           never honestly show until Stremio started supplying it.
+           never honestly show until Stremio started supplying it — and now
+           also the one it can answer for an account with nothing connected,
+           from the full length of whatever has been marked watched here.
         */}
         <WatchTimeCard />
 
         {/*
-           The hero number is what you have saved, because it is the one figure
-           this app actually knows and the one that grows as it is used. The
-           shape this is modelled on leads with hours watched; CineSync has
-           never tracked a minute of playback, and inventing one would be the
-           fake "Alex Mercer" profile all over again.
+           The hero number when nothing has been watched, and the second figure
+           when something has. It is what you have saved — the one thing this
+           app knows first-hand about every account, and the one that grows as
+           it is used. Hours watched now sits above it, but only where there is
+           real playback or a real list behind it: the shape this is modelled
+           on leads with hours watched unconditionally, which for an empty
+           account means inventing them, and that was the fake "Alex Mercer"
+           profile.
         */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
