@@ -7,6 +7,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { useMotionPreference } from "@/lib/useReducedMotion";
 import { useSourcesStore } from "@/store/useSourcesStore";
 import { useLibrarySync } from "@/lib/useLibrarySync";
+import { useWatchedSync } from "@/lib/useWatchedSync";
 import { useTabPrefetch } from "@/lib/useTabPrefetch";
 import { primeNotificationCue } from "@/lib/notificationCue";
 
@@ -161,6 +162,10 @@ export default function Home() {
   // Keeps the "In Library" badges honest, including after a title is deleted
   // from the Stremio app while this tab sits in the background.
   useLibrarySync();
+
+  // And puts what those libraries have finished into the Watched list. Reads
+  // the snapshot the line above refreshes, so it costs no request of its own.
+  useWatchedSync();
 
   // Warms the other tabs' payloads once the page goes idle, so switching to
   // one renders populated instead of paying its route handler's cold cost.

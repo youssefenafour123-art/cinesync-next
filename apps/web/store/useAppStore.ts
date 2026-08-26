@@ -103,6 +103,14 @@ interface AppState {
    * "Because you watched" rail on Discover.
    */
   lastWatched: WatchedTitle | null;
+  /**
+   * Everything the connected libraries have finished, for the Watched list.
+   *
+   * Held here rather than read where it is needed because the snapshot is
+   * fetched by one hook on a throttle and consumed by another; a second read
+   * would be a second pass over every row in every connected account.
+   */
+  stremioWatched: WatchedTitle[];
   setLibrary: (snapshot: LibrarySnapshot) => void;
   markInLibrary: (id: string) => void;
   unmarkInLibrary: (id: string) => void;
@@ -168,6 +176,7 @@ export const useAppStore = create<AppState>((set) => ({
   knownLibraryIds: new Set<string>(),
   libraryLoaded: false,
   lastWatched: null,
+  stremioWatched: [],
   setLibrary: (snapshot) =>
     /*
        Absent means "not recomputed", not "empty".
@@ -183,6 +192,9 @@ export const useAppStore = create<AppState>((set) => ({
       knownLibraryIds: snapshot.known,
       libraryLoaded: true,
       lastWatched: snapshot.lastWatched ?? s.lastWatched,
+      // Same reasoning as the line above: a snapshot that recomputed only
+      // membership carries no watch state, and must not clear what does.
+      stremioWatched: snapshot.watched ?? s.stremioWatched,
       libraryItems: snapshot.items ?? s.libraryItems,
     })),
   markInLibrary: (id) =>

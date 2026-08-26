@@ -231,6 +231,36 @@ export async function addToList(listId: string, title: SavedTitle): Promise<void
 }
 
 /**
+ * The same, for many titles at once.
+ *
+ * One request rather than one per title, because the caller that needs this is
+ * the Stremio watch sync and a first run of it is ninety-odd rows — ninety-odd
+ * round trips, at which point the list fills in visibly over fifteen seconds.
+ *
+ * The upsert conflict target is the same (list_id, imdb_id) primary key the
+ * single-row version uses, so re-sending a title the list already holds is
+ * still a no-op rather than an error.
+ */
+export async function addManyToList(listId: string, titles: SavedTitle[]): Promise<void> {
+  if (titles.length === 0) return;
+
+  const { error } = await supabaseBrowser()
+    .from("list_items")
+    .upsert(
+      titles.map((title) => ({
+        list_id: listId,
+        imdb_id: title.imdbId,
+        tmdb_id: title.tmdbId ?? null,
+        kind: title.kind,
+        title: title.title,
+        poster: title.poster ?? null,
+      })),
+      { onConflict: "list_id,imdb_id" },
+    );
+  if (error) throw new Error(error.message);
+}
+
+/**
  * Which of the caller's lists already hold this title.
  *
  * One request rather than one per list, and scoped to ids the caller passed:

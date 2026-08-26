@@ -76,7 +76,8 @@ export function WatchedSection() {
         <SavedTitleGridSkeleton />
       ) : items.length === 0 ? (
         <EmptyShelf>
-          Nothing marked yet. Open any title and press Watched to keep a record of having seen it.
+          Nothing marked yet. Press Watched on any title, or finish something in a connected
+          Stremio account and it lands here on its own.
         </EmptyShelf>
       ) : (
         <SavedTitleGrid

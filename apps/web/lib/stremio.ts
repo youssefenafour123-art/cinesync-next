@@ -82,6 +82,15 @@ export interface LibrarySnapshot {
   /** The most recently played row, if the account has ever played anything. */
   lastWatched?: WatchedTitle;
   /**
+   * Everything the account has *finished*, which is a different question from
+   * `lastWatched`.
+   *
+   * That one wants the last thing played, however briefly, because it seeds a
+   * "because you watched" rail. This drives the Watched list, where a film
+   * someone bailed on after four minutes does not belong. See `finishedFrom`.
+   */
+  watched?: WatchedTitle[];
+  /**
    * Everything in the library proper, for rendering it.
    *
    * Optional so a caller that only recomputes membership — `useSync` does —
@@ -114,6 +123,18 @@ export function mergeSnapshots(snapshots: LibrarySnapshot[]): LibrarySnapshot {
     for (const entry of snap.items ?? []) {
       (merged.items ??= []).push(entry);
     }
+
+    /*
+       Two accounts that both finished the same film are one watched title, and
+       the later of the two dates is the honest one — that is when this person
+       last saw it, whichever account they used.
+    */
+    for (const title of snap.watched ?? []) {
+      const seen = (merged.watched ??= []);
+      const existing = seen.find((w) => w.imdbId === title.imdbId);
+      if (!existing) seen.push(title);
+      else if (title.watchedAt > existing.watchedAt) existing.watchedAt = title.watchedAt;
+    }
   }
 
   if (merged.items) {
@@ -127,6 +148,7 @@ export function mergeSnapshots(snapshots: LibrarySnapshot[]): LibrarySnapshot {
 
 interface RemoteState {
   lastWatched?: string | null;
+  duration?: number;
   timeOffset?: number;
   timeWatched?: number;
   overallTimeWatched?: number;
@@ -174,6 +196,54 @@ function watchedFrom(row: RemoteLibraryItem): WatchedTitle | null {
     kind: row.type === 'series' ? 'series' : 'movie',
     poster: row.poster || undefined,
     watchedAt,
+  };
+}
+
+/** How far through a title counts as having finished it. */
+const FINISHED_AT = 0.9;
+
+/**
+ * Whether a row records a title someone actually *finished*.
+ *
+ * `watchedFrom` above answers "did they press play", which is the right
+ * question for a rail that says "because you watched". It is the wrong one for
+ * a Watched list: `timeOffset > 0` is true four minutes into a film somebody
+ * gave up on, and a list that fills with abandoned titles is a list nobody
+ * trusts.
+ *
+ * Stremio has its own answer and it is worth taking: `flaggedWatched` is set
+ * when it considers a title watched — by reaching the end, or by the viewer
+ * choosing "mark as watched" — and `timesWatched` counts completions. The
+ * progress check is the third way in, for players that update position but
+ * never flag: 90% of the runtime is past the point where the credits are what
+ * is left.
+ */
+export function finishedFrom(row: RemoteLibraryItem): WatchedTitle | null {
+  const id = row._id;
+  const state = row.state;
+  if (!state || typeof id !== "string" || !/^tt\d+$/.test(id)) return null;
+
+  const duration = state.duration ?? 0;
+  const finished =
+    (state.flaggedWatched ?? 0) > 0 ||
+    (state.timesWatched ?? 0) > 0 ||
+    (duration > 0 && (state.timeOffset ?? 0) / duration >= FINISHED_AT);
+  if (!finished) return null;
+
+  /*
+     A date is wanted but not required here, unlike in `watchedFrom`. That one
+     compares timestamps to find the most recent play, so a row without one is
+     useless to it; this only needs to know the title was finished, and a
+     Stremio row can carry `flaggedWatched` with no readable `lastWatched`.
+  */
+  const parsed = state.lastWatched ? Date.parse(state.lastWatched) : NaN;
+
+  return {
+    imdbId: id,
+    title: row.name || id,
+    kind: row.type === "series" ? "series" : "movie",
+    poster: row.poster || undefined,
+    watchedAt: Number.isFinite(parsed) && parsed > 0 ? parsed : 0,
   };
 }
 
@@ -239,6 +309,10 @@ export async function fetchLibrarySnapshot(authKey: string): Promise<LibrarySnap
       if (watched && (!snapshot.lastWatched || watched.watchedAt > snapshot.lastWatched.watchedAt)) {
         snapshot.lastWatched = watched;
       }
+
+      // And the stricter question, for the Watched list. Same row, same loop.
+      const finished = finishedFrom(row);
+      if (finished) (snapshot.watched ??= []).push(finished);
     }
     return snapshot;
   } catch {

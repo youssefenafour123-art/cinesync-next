@@ -5,7 +5,14 @@ import type { MediaItem } from "./types";
 import { useSession } from "./useSession";
 import { useAppStore } from "@/store/useAppStore";
 import type { SavedTitle, SystemListColumn } from "./lists";
-import { addToList, fetchListItems, fetchSystemListId, removeFromList, toSavedTitle } from "./lists";
+import {
+  addManyToList,
+  addToList,
+  fetchListItems,
+  fetchSystemListId,
+  removeFromList,
+  toSavedTitle,
+} from "./lists";
 
 /**
  * A list the database creates for you and the app treats as a single answer.
@@ -29,6 +36,8 @@ export interface SystemListStore {
     items: SavedTitle[];
     has: (imdbId?: string) => boolean;
     toggle: (item: MediaItem) => Promise<void>;
+    /** Adds several titles at once, skipping the ones already here. */
+    merge: (titles: SavedTitle[]) => Promise<string[]>;
     pending: boolean;
     ready: boolean;
     signedIn: boolean;
@@ -174,7 +183,52 @@ export function createSystemListStore(column: SystemListColumn, copy: Copy): Sys
       [user, showToast],
     );
 
-    return { items, has, toggle, pending, ready: loaded, signedIn: Boolean(user) };
+    /**
+     * Adds titles this list does not already hold, and reports which.
+     *
+     * For a source that speaks in whole lists rather than in one press —
+     * today that is the Stremio watch state feeding the Watched list, whose
+     * first run is ninety-odd titles.
+     *
+     * One request for all of them, then one request each only if that is
+     * refused. A single bad row — a title too long for the column, say — would
+     * otherwise take the whole batch down with it, and the retry turns "the
+     * sync did nothing" into "the sync did everything except that one".
+     *
+     * The caller gets back the ids that were actually written, so it can
+     * remember what it has already sent and never send it again.
+     */
+    const merge = useCallback(async (titles: SavedTitle[]): Promise<string[]> => {
+      if (!user || !listId || titles.length === 0) return [];
+
+      const missing = titles.filter((t) => t.imdbId && !saved.has(t.imdbId));
+      if (missing.length === 0) return [];
+
+      let added: SavedTitle[] = [];
+      try {
+        await addManyToList(listId, missing);
+        added = missing;
+      } catch {
+        for (const title of missing) {
+          try {
+            await addToList(listId, title);
+            added.push(title);
+          } catch {
+            // One refused row is one title missing from a list, not a reason
+            // to abandon the rest of a sync.
+          }
+        }
+      }
+
+      if (added.length === 0) return [];
+
+      // Newest first, which is the order everything else here renders in.
+      setItems([...added, ...items]);
+      publish();
+      return added.map((t) => t.imdbId);
+    }, [user]);
+
+    return { items, has, toggle, merge, pending, ready: loaded, signedIn: Boolean(user) };
   }
 
   return { use, reset };
