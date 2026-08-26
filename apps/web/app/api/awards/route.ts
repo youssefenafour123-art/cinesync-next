@@ -36,16 +36,29 @@ export async function GET(req: Request) {
   }
 
   /*
-     An empty result is a 200, not a 404.
+     An empty result is a 200, not a 404. Plenty of titles and people have no
+     Wikidata item, or none of the awards this names — an ordinary answer to an
+     ordinary question, and the panel says so.
 
-     Plenty of titles and people have no Wikidata item, or none of the awards
-     this names — that is an ordinary answer to an ordinary question, and the
-     panel renders "nothing recorded" rather than an error. `fetchAwardDetail`
-     swallows its own network failures for the same reason, so a Wikidata
-     outage reads as "nothing recorded" too. That is the one dishonest edge
-     here, and it is the same trade every other optional source in this app
-     makes.
+     A Wikidata *refusal* is emphatically not that, and the difference is what
+     this route got wrong first time round. Both used to arrive here as an
+     empty payload, which was returned as a cacheable 200 — so one throttled
+     request left Emma Stone's panel reading "nothing itemised on Wikidata"
+     beneath a badge Wikidata had itself supplied, and `revalidate` above meant
+     it would keep saying that for a week. Two of eight people checked on
+     production were in that state.
+
+     So a refusal throws out of `fetchAwardDetail` and is answered with a 502
+     carrying `no-store`: nothing caches it, the panel says it could not reach
+     the source, and pressing again genuinely re-asks.
   */
-  const payload: AwardsPayload = await fetchAwardDetail(imdbId);
-  return Response.json(payload, { headers: CATALOGUE_CACHE });
+  try {
+    const payload: AwardsPayload = await fetchAwardDetail(imdbId);
+    return Response.json(payload, { headers: CATALOGUE_CACHE });
+  } catch {
+    return Response.json(
+      { error: "Couldn't reach Wikidata just now." },
+      { status: 502, headers: { "Cache-Control": "no-store" } },
+    );
+  }
 }

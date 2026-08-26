@@ -47,7 +47,7 @@ export function AwardsBadge({ imdbId, label, won, tooltip, summary }: AwardsBadg
      `useFetch` treats a null url as "nothing to fetch" and the request only
      ever leaves once somebody asks for the detail.
   */
-  const { data, loading } = useFetch<AwardsPayload>(
+  const { data, loading, error, reload } = useFetch<AwardsPayload>(
     open && imdbId ? `/api/awards?imdb=${encodeURIComponent(imdbId)}` : null,
   );
 
@@ -118,6 +118,31 @@ export function AwardsBadge({ imdbId, label, won, tooltip, summary }: AwardsBadg
 
           {loading && !data ? (
             <div className="h-16 animate-pulse rounded-DEFAULT bg-white/5" />
+          ) : error ? (
+            /*
+               Not the same as having nothing to show, and it took a bug report
+               to make that distinction exist. Wikidata refuses a request often
+               enough from a serverless address — shared outbound IP, looks like
+               a scraper — that this is a state a reader will actually meet, and
+               the panel used to render it as "nothing itemised" under a badge
+               built from the very data it claimed was absent.
+
+               The route answers a refusal with `no-store`, so pressing this
+               genuinely re-asks rather than being handed the same cached
+               nothing.
+            */
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="font-body-md text-[13px] text-on-surface-variant">
+                Couldn&rsquo;t reach Wikidata just now.
+              </p>
+              <button
+                type="button"
+                onClick={reload}
+                className="rounded-full border border-white/15 px-3 py-1 font-label-md text-[12px] text-on-surface transition-colors hover:border-primary/40 hover:text-primary"
+              >
+                Try again
+              </button>
+            </div>
           ) : data?.groups.length ? (
             <>
               {summary ? (

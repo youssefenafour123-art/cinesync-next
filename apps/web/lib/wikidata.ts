@@ -63,22 +63,43 @@ const API = "https://www.wikidata.org/w/api.php";
 const WEEK = 604_800;
 
 /**
- * One Wikidata call, retried once.
+ * Wikidata did not answer — as distinct from answering that it knows nothing.
  *
- * The retry is not defensive programming for its own sake — it was earned.
- * Asking about seven people in quick succession is twenty-one requests, and
- * Wikidata throttled the tail of them: four profiles came back with no awards
- * at all, then showed the right ones a minute later. That is the shape of
- * failure worth handling, because the alternative is a badge that is missing
- * for as long as the route's day-long cache holds the render it was missing
- * from.
+ * The distinction is the whole point of this class. Both used to come back as
+ * an empty result, and an empty result is *cacheable*: a single throttled
+ * request on production left Emma Stone's panel reading "nothing itemised on
+ * Wikidata" under a badge that Wikidata itself had supplied, and the route's
+ * week-long revalidation meant it would have said that for a week. Two of
+ * eight people were in that state when it was found.
  *
- * Failures are not cached — the retry recovered on its own the first time,
- * which is what says so — so a second attempt genuinely re-asks rather than
- * being handed the same refusal.
+ * So a refusal now throws and a genuine absence returns a value, and only the
+ * second of those is allowed anywhere near a cache.
  */
-async function wd<T>(url: string): Promise<T | null> {
-  for (let attempt = 0; attempt < 2; attempt++) {
+export class WikidataUnavailable extends Error {
+  constructor(url: string) {
+    super(`Wikidata did not answer: ${url}`);
+    this.name = "WikidataUnavailable";
+  }
+}
+
+/** Backoff between attempts. Three tries, spread over about two seconds. */
+const BACKOFF_MS = [400, 1200];
+
+/**
+ * One Wikidata call. Retries, then throws.
+ *
+ * The retries were earned rather than added on principle. Asking about seven
+ * people in quick succession is twenty-one requests and Wikidata throttled the
+ * tail of them; the same thing happens from a serverless function, where the
+ * outbound address is shared with every other tenant on that host and arrives
+ * at Wikidata looking a great deal like a scraper.
+ *
+ * Throwing rather than returning null is the fix for the caching bug above.
+ * The caller cannot tell an empty answer from no answer by looking at a value,
+ * so it is not asked to.
+ */
+async function wd<T>(url: string): Promise<T> {
+  for (let attempt = 0; attempt <= BACKOFF_MS.length; attempt++) {
     try {
       const res = await fetch(url, {
         // Wikidata asks callers to identify themselves and throttles the ones
@@ -90,11 +111,10 @@ async function wd<T>(url: string): Promise<T | null> {
     } catch {
       // Network-level failure. Same treatment as a refusal.
     }
-    // Long enough to clear a burst limit, short enough that a person profile
-    // does not visibly wait on it.
-    if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 400));
+    const wait = BACKOFF_MS[attempt];
+    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
   }
-  return null;
+  throw new WikidataUnavailable(url);
 }
 
 interface SearchResponse {
@@ -111,7 +131,9 @@ async function resolveItem(imdbId: string): Promise<string | null> {
     `${API}?action=query&format=json&list=search&srlimit=1` +
       `&srsearch=${encodeURIComponent(`haswbstatement:P345=${imdbId}`)}`,
   );
-  return search?.query?.search?.[0]?.title ?? null;
+  // A successful search that matched nothing is a real answer: this person or
+  // title has no Wikidata item. `wd` has already thrown if nobody answered.
+  return search.query?.search?.[0]?.title ?? null;
 }
 
 /**
@@ -130,7 +152,7 @@ async function labelsFor(ids: string[]): Promise<Map<string, string>> {
       `${API}?action=wbgetentities&format=json&props=labels&languages=en` +
         `&ids=${unique.slice(i, i + 50).join("|")}`,
     );
-    for (const [id, ent] of Object.entries(page?.entities ?? {})) {
+    for (const [id, ent] of Object.entries(page.entities ?? {})) {
       const value = ent.labels?.en?.value;
       if (value) labels.set(id, value);
     }
@@ -230,7 +252,15 @@ function phrase(t: AwardTally): string {
 export async function fetchPersonAwards(imdbId: string): Promise<PersonAwards | null> {
   if (!/^nm\d+$/.test(imdbId)) return null;
 
-  const claims = await awardClaims(imdbId);
+  /*
+     Still swallows a refusal, unlike `fetchAwardDetail` below, and the
+     asymmetry is deliberate: this one is on the person route's critical path
+     and its failure costs a badge, where that one *is* the answer and its
+     failure has to be visible. A missing badge here is cached for the person
+     route's day and then re-asked, which is the same self-healing behaviour it
+     has always had.
+  */
+  const claims = await awardClaims(imdbId).catch(() => [] as AwardClaim[]);
   if (!claims.length) return null;
 
   const ids = claims.map((c) => c.mainsnak?.datavalue?.value?.id).filter(Boolean) as string[];
@@ -239,7 +269,7 @@ export async function fetchPersonAwards(imdbId: string): Promise<PersonAwards | 
   // Only the award ids here. The qualifiers cost more labels to resolve and
   // this is on the person route's critical path; the itemised view asks for
   // them separately, and only when somebody opens it.
-  const labels = await labelsFor(ids);
+  const labels = await labelsFor(ids).catch(() => new Map<string, string>());
   const tallies = tally(ids.map((id) => labels.get(id)).filter(Boolean) as string[]);
   if (!tallies.length) return null;
 
@@ -257,7 +287,7 @@ async function awardClaims(imdbId: string): Promise<AwardClaim[]> {
   const entity = await wd<ClaimsResponse>(
     `${API}?action=wbgetentities&format=json&props=claims&ids=${encodeURIComponent(qid)}`,
   );
-  return entity?.entities?.[qid]?.claims?.P166 ?? [];
+  return entity.entities?.[qid]?.claims?.P166 ?? [];
 }
 
 /** "+2016-01-01T00:00:00Z" → "2016". Wikidata times carry a leading sign. */
@@ -285,6 +315,11 @@ function yearOf(time?: string): string | undefined {
 export async function fetchAwardDetail(imdbId: string): Promise<AwardsPayload> {
   const empty: AwardsPayload = { groups: [], others: 0 };
   if (!/^(tt|nm)\d+$/.test(imdbId)) return empty;
+
+  // Deliberately no catch anywhere below. A `WikidataUnavailable` has to reach
+  // the route so it can answer with a status nothing will cache — see the
+  // note on that class.
+
 
   const claims = await awardClaims(imdbId);
   if (!claims.length) return empty;
