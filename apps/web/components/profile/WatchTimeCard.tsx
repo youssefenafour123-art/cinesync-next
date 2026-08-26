@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { useAppStore } from "@/store/useAppStore";
 import { CountUp } from "@/components/ui/CountUp";
 import { Icon } from "@/components/ui/Icon";
@@ -105,33 +105,35 @@ export function WatchTimeCard() {
       </div>
 
       {/*
-         Each unit swaps in place rather than the whole line re-rendering, so
-         changing units reads as the same number said differently — which is
-         what it is.
+         Keyed on the unit, so React swaps the line and the new figure springs
+         in. Deliberately *not* `AnimatePresence mode="wait"`, which was the
+         first version: that holds the incoming child until the outgoing one's
+         exit animation finishes, and an exit animation runs on rAF. Anything
+         that stalls the frame loop — a backgrounded tab, most obviously —
+         leaves the card showing the old units for ever while the state behind
+         it has already changed. Caught pressing it four times with nothing
+         happening.
       */}
       <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={unit}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18 }}
-            className="flex flex-wrap items-baseline gap-x-2"
-          >
-            {shown.map((part) => (
-              <span key={part.suffix} className="flex items-baseline">
-                <CountUp
-                  value={part.value}
-                  className="font-headline-lg text-[34px] leading-none text-on-surface"
-                />
-                <span className="ml-0.5 font-title-lg text-[17px] text-on-surface/70">
-                  {part.suffix}
-                </span>
+        <motion.div
+          key={unit}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.18 }}
+          className="flex flex-wrap items-baseline gap-x-2"
+        >
+          {shown.map((part) => (
+            <span key={part.suffix} className="flex items-baseline">
+              <CountUp
+                value={part.value}
+                className="font-headline-lg text-[34px] leading-none text-on-surface"
+              />
+              <span className="ml-0.5 font-title-lg text-[17px] text-on-surface/70">
+                {part.suffix}
               </span>
-            ))}
-          </motion.div>
-        </AnimatePresence>
+            </span>
+          ))}
+        </motion.div>
       </div>
 
       <p className="mt-1 flex items-center gap-1 font-label-md text-label-md text-on-surface/60">
