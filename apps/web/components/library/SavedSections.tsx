@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useWatchlist } from "@/lib/useWatchlist";
 import { useWatched } from "@/lib/useWatched";
 import { useLists } from "@/lib/useLists";
@@ -12,16 +12,7 @@ import {
   toMediaItem,
 } from "@/components/ui/SavedTitleGrid";
 import { Icon } from "@/components/ui/Icon";
-
-/**
- * How many titles a shelf shows before it offers the rest.
- *
- * The same 18 the Stremio library section uses, and for the same reason: three
- * rows of six on a desktop is a shelf, and everything after that is a wall.
- * The watched list reached 97 titles the day it started filling itself from
- * Stremio, which is what made this necessary rather than tidy.
- */
-const PAGE = 18;
+import { ShelfPager, useShelfAnchor, useShelfPager } from "@/components/ui/ShelfPager";
 
 /*
    Lifted out of LibraryTab so the profile screen can render the same two
@@ -44,7 +35,7 @@ const PAGE = 18;
 export function WatchlistSection() {
   const { items, ready, signedIn, toggle, pending } = useWatchlist();
   const { anchor, scrollBack } = useShelfAnchor();
-  const paging = useShelfPaging(items.length, scrollBack);
+  const pager = useShelfPager(items.length, scrollBack);
 
   if (!signedIn) return null;
 
@@ -60,147 +51,23 @@ export function WatchlistSection() {
       ) : (
         <>
           <SavedTitleGrid
-            items={items.slice(0, paging.shown)}
+            items={items.slice(pager.start, pager.end)}
             onRemove={(t) => void toggle(toMediaItem(t))}
             removeLabel={(t) => `Remove ${t.title} from your watchlist`}
             busy={pending}
           />
-          <ShelfControls
+          <ShelfPager
+            page={pager.page}
+            pages={pager.pages}
+            start={pager.start}
+            end={pager.end}
             total={items.length}
-            shown={paging.shown}
-            hasMore={paging.hasMore}
-            canCollapse={paging.canCollapse}
-            onMore={paging.more}
-            onAll={paging.all}
-            onCollapse={paging.collapse}
+            onGo={pager.go}
+            label="Watchlist"
           />
         </>
       )}
     </section>
-  );
-}
-
-/**
- * Paging for one shelf: how many are shown, and the controls that change it.
- *
- * A single "Show all" was the first version, and it was reported as not
- * working. It did work — all ninety-seven tiles were in the grid — but
- * everything it revealed appeared *below the fold*, so pressing it left the
- * screen looking identical and moved the button five thousand pixels down the
- * page. A control whose entire effect is off-screen reads as a broken control.
- *
- * "Show more" adds a page at a time instead: the new rows land next to the
- * button, which stays within reach, and pressing again is the obvious next
- * move. "Show all" is still there for anyone who means it.
- */
-function useShelfPaging(total: number, onCollapsed: () => void) {
-  const [requested, setRequested] = useState(PAGE);
-
-  /*
-     Clamped on read rather than corrected in an effect.
-
-     A list can shrink under the paging — a removal, a different account — and
-     the count then has to come back down with it. Doing that with a setState
-     in an effect is a second render pass for something the arithmetic already
-     knows on the first.
-  */
-  const shown = Math.min(requested, Math.max(total, PAGE));
-
-  /*
-     The scroll target is the caller's, not this hook's. Returning a ref
-     alongside the state trips `react-hooks/refs`, which reads every property
-     access on the returned object as reading a ref during render — so the
-     section keeps the ref and hands in what to do with it.
-  */
-  const collapse = useCallback(() => {
-    setRequested(PAGE);
-    onCollapsed();
-  }, [onCollapsed]);
-
-  return {
-    shown,
-    more: useCallback(() => setRequested((n) => n + PAGE), []),
-    all: useCallback(() => setRequested(total), [total]),
-    collapse,
-    hasMore: shown < total,
-    canCollapse: shown > PAGE,
-  };
-}
-
-/**
- * Puts the shelf's own heading back on screen after it collapses.
- *
- * Without it, folding ninety-seven posters back to eighteen leaves you
- * standing in whatever section happens to follow this one, with no sign of
- * what just happened above you.
- */
-function useShelfAnchor() {
-  const anchor = useRef<HTMLDivElement>(null);
-  const scrollBack = useCallback(() => {
-    anchor.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
-  return { anchor, scrollBack };
-}
-
-function ShelfControls({
-  total,
-  shown,
-  hasMore,
-  canCollapse,
-  onMore,
-  onAll,
-  onCollapse,
-}: {
-  total: number;
-  shown: number;
-  hasMore: boolean;
-  canCollapse: boolean;
-  onMore: () => void;
-  onAll: () => void;
-  onCollapse: () => void;
-}) {
-  // Nothing to offer when the shelf already holds everything it has.
-  if (total <= PAGE) return null;
-
-  return (
-    <div className="mt-6 flex flex-wrap items-center gap-4">
-      {hasMore ? (
-        <>
-          <button
-            type="button"
-            onClick={onMore}
-            className="rounded-full bg-surface-container px-5 py-2 font-label-md text-label-md text-primary transition-colors hover:bg-surface-container-high"
-          >
-            Show more
-          </button>
-          <button
-            type="button"
-            onClick={onAll}
-            className="font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
-          >
-            Show all {total}
-          </button>
-        </>
-      ) : null}
-
-      {canCollapse ? (
-        <button
-          type="button"
-          onClick={onCollapse}
-          className="font-label-md text-label-md text-on-surface-variant transition-colors hover:text-primary"
-        >
-          Show fewer
-        </button>
-      ) : null}
-
-      {/*
-         The count is what says the press did something, for the case where
-         the rows it revealed landed below the fold anyway.
-      */}
-      <span className="font-label-md text-label-md text-on-surface-variant/70">
-        Showing {Math.min(shown, total)} of {total}
-      </span>
-    </div>
   );
 }
 
@@ -214,7 +81,7 @@ function ShelfControls({
 export function WatchedSection() {
   const { items, ready, signedIn, toggle, pending } = useWatched();
   const { anchor, scrollBack } = useShelfAnchor();
-  const paging = useShelfPaging(items.length, scrollBack);
+  const pager = useShelfPager(items.length, scrollBack);
 
   if (!signedIn) return null;
 
@@ -233,20 +100,20 @@ export function WatchedSection() {
       ) : (
         <>
           <SavedTitleGrid
-            items={items.slice(0, paging.shown)}
+            items={items.slice(pager.start, pager.end)}
             onRemove={(t) => void toggle(toMediaItem(t))}
             removeLabel={(t) => `Remove ${t.title} from your watched list`}
             removeIcon="visibility_off"
             busy={pending}
           />
-          <ShelfControls
+          <ShelfPager
+            page={pager.page}
+            pages={pager.pages}
+            start={pager.start}
+            end={pager.end}
             total={items.length}
-            shown={paging.shown}
-            hasMore={paging.hasMore}
-            canCollapse={paging.canCollapse}
-            onMore={paging.more}
-            onAll={paging.all}
-            onCollapse={paging.collapse}
+            onGo={pager.go}
+            label="Watched"
           />
         </>
       )}

@@ -6,10 +6,10 @@ import { useSourcesStore, stremioAccounts } from "@/store/useSourcesStore";
 import { useLibraryActions } from "@/lib/useLibraryActions";
 import { useLibraryRefresh } from "@/lib/useLibrarySync";
 import { SavedTitleGrid } from "@/components/ui/SavedTitleGrid";
+import { ShelfPager, useShelfAnchor, useShelfPager } from "@/components/ui/ShelfPager";
 import { Icon } from "@/components/ui/Icon";
 
 /** Shown before "Show all". A library of three hundred is not a page. */
-const PAGE = 18;
 
 type Filter = "all" | "movie" | "series";
 
@@ -36,7 +36,7 @@ export function StremioLibrary() {
 
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
-  const [expanded, setExpanded] = useState(false);
+
 
   const connected = stremioAccounts(sources).length > 0;
 
@@ -47,6 +47,19 @@ export function StremioLibrary() {
         (filter === "all" || e.kind === filter) && (!q || e.title.toLowerCase().includes(q)),
     );
   }, [items, query, filter]);
+
+  /*
+     Paged like the saved shelves, rather than the "Show all 311" it had.
+
+     Three hundred posters in one column was the same wall the watched list
+     turned into, and having one shelf on this screen page while the one above
+     it expands in place is worse than either choice on its own.
+
+     Keyed off the *filtered* length, so narrowing to Shows recomputes the
+     pages instead of stranding you on page 12 of a list that now has four.
+  */
+  const { anchor, scrollBack } = useShelfAnchor();
+  const pager = useShelfPager(shown.length, scrollBack);
 
   // Nothing at all when no Stremio account is linked. The Library tab already
   // says where to connect one; a second empty panel repeating it is noise.
@@ -60,6 +73,8 @@ export function StremioLibrary() {
 
   return (
     <section className="mb-8">
+      {/* Where a page change scrolls back to. */}
+      <div ref={anchor} className="scroll-mt-24" />
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h3 className="font-title-lg text-title-lg text-on-surface">In your Stremio library</h3>
@@ -137,23 +152,22 @@ export function StremioLibrary() {
       ) : (
         <>
           <SavedTitleGrid
-            items={expanded ? shown : shown.slice(0, PAGE)}
+            items={shown.slice(pager.start, pager.end)}
             onRemove={(t) => void remove({ imdbId: t.imdbId, title: t.title, kind: t.kind })}
             removeLabel={(t) => `Remove ${t.title} from your Stremio library`}
             removeIcon="delete"
             busy={removing}
           />
 
-          {shown.length > PAGE ? (
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              aria-expanded={expanded}
-              className="mt-6 font-label-md text-label-md text-primary transition-opacity hover:opacity-80"
-            >
-              {expanded ? "Show fewer" : `Show all ${shown.length}`}
-            </button>
-          ) : null}
+          <ShelfPager
+            page={pager.page}
+            pages={pager.pages}
+            start={pager.start}
+            end={pager.end}
+            total={shown.length}
+            onGo={pager.go}
+            label="Stremio library"
+          />
         </>
       )}
     </section>
