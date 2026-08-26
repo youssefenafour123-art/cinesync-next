@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useWatchlist } from "@/lib/useWatchlist";
 import { useWatched } from "@/lib/useWatched";
 import { useLists } from "@/lib/useLists";
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/SavedTitleGrid";
 import { Icon } from "@/components/ui/Icon";
 import { ShelfPager, useShelfAnchor, useShelfPager } from "@/components/ui/ShelfPager";
+import { countKinds, KindChips, type KindFilter } from "@/components/ui/KindChips";
 
 /*
    Lifted out of LibraryTab so the profile screen can render the same two
@@ -25,6 +26,32 @@ import { ShelfPager, useShelfAnchor, useShelfPager } from "@/components/ui/Shelf
 */
 
 /**
+ * Films, shows, or both — and the page you are on within them.
+ *
+ * The two questions belong together because changing the first has to answer
+ * the second: switching from 97 titles to 39 films while standing on page 5
+ * would otherwise leave you on a page that no longer exists. `go(1)` in the
+ * same handler puts you at the top of the new list, which is where someone
+ * who just narrowed a list expects to be.
+ */
+function useShelfKind(items: SavedTitle[]) {
+  const [kind, setKind] = useState<KindFilter>("all");
+
+  const counts = useMemo(() => countKinds(items), [items]);
+  const shown = useMemo(
+    () => (kind === "all" ? items : items.filter((t) => t.kind === kind)),
+    [items, kind],
+  );
+
+  /*
+     The pager is not passed in, and cannot be: it is built from `shown`, which
+     is built from this. The section composes the two instead — choosing a kind
+     is an event handler, so it can reach a pager created after this hook ran.
+  */
+  return { kind, counts, shown, setKind, split: counts.movie > 0 && counts.series > 0 };
+}
+
+/**
  * The account's watchlist.
  *
  * Signed-in only, and it renders nothing at all otherwise. Every other section
@@ -35,14 +62,35 @@ import { ShelfPager, useShelfAnchor, useShelfPager } from "@/components/ui/Shelf
 export function WatchlistSection() {
   const { items, ready, signedIn, toggle, pending } = useWatchlist();
   const { anchor, scrollBack } = useShelfAnchor();
-  const pager = useShelfPager(items.length, scrollBack);
+  const kinds = useShelfKind(items);
+  const paged = useShelfPager(kinds.shown.length, scrollBack);
+
+  /* Narrowing to films puts you at the top of the films, not on page 5 of a
+     list that now has two. */
+  const chooseKind = (next: KindFilter) => {
+    kinds.setKind(next);
+    paged.go(1);
+  };
 
   if (!signedIn) return null;
 
   return (
     <section className="mb-8">
       <div ref={anchor} className="scroll-mt-24" />
-      <SectionHeading title="Watchlist" count={ready ? items.length : undefined} />
+      <SectionHeading
+        title="Watchlist"
+        count={ready ? items.length : undefined}
+        filter={
+          kinds.split ? (
+            <KindChips
+              value={kinds.kind}
+              counts={kinds.counts}
+              onChange={chooseKind}
+              label="Filter your watchlist by kind"
+            />
+          ) : null
+        }
+      />
 
       {!ready ? (
         <SavedTitleGridSkeleton />
@@ -51,18 +99,18 @@ export function WatchlistSection() {
       ) : (
         <>
           <SavedTitleGrid
-            items={items.slice(pager.start, pager.end)}
+            items={kinds.shown.slice(paged.start, paged.end)}
             onRemove={(t) => void toggle(toMediaItem(t))}
             removeLabel={(t) => `Remove ${t.title} from your watchlist`}
             busy={pending}
           />
           <ShelfPager
-            page={pager.page}
-            pages={pager.pages}
-            start={pager.start}
-            end={pager.end}
-            total={items.length}
-            onGo={pager.go}
+            page={paged.page}
+            pages={paged.pages}
+            start={paged.start}
+            end={paged.end}
+            total={kinds.shown.length}
+            onGo={paged.go}
             label="Watchlist"
           />
         </>
@@ -81,14 +129,35 @@ export function WatchlistSection() {
 export function WatchedSection() {
   const { items, ready, signedIn, toggle, pending } = useWatched();
   const { anchor, scrollBack } = useShelfAnchor();
-  const pager = useShelfPager(items.length, scrollBack);
+  const kinds = useShelfKind(items);
+  const paged = useShelfPager(kinds.shown.length, scrollBack);
+
+  /* Narrowing to films puts you at the top of the films, not on page 5 of a
+     list that now has two. */
+  const chooseKind = (next: KindFilter) => {
+    kinds.setKind(next);
+    paged.go(1);
+  };
 
   if (!signedIn) return null;
 
   return (
     <section className="mb-8">
       <div ref={anchor} className="scroll-mt-24" />
-      <SectionHeading title="Watched" count={ready ? items.length : undefined} />
+      <SectionHeading
+        title="Watched"
+        count={ready ? items.length : undefined}
+        filter={
+          kinds.split ? (
+            <KindChips
+              value={kinds.kind}
+              counts={kinds.counts}
+              onChange={chooseKind}
+              label="Filter watched by kind"
+            />
+          ) : null
+        }
+      />
 
       {!ready ? (
         <SavedTitleGridSkeleton />
@@ -100,19 +169,19 @@ export function WatchedSection() {
       ) : (
         <>
           <SavedTitleGrid
-            items={items.slice(pager.start, pager.end)}
+            items={kinds.shown.slice(paged.start, paged.end)}
             onRemove={(t) => void toggle(toMediaItem(t))}
             removeLabel={(t) => `Remove ${t.title} from your watched list`}
             removeIcon="visibility_off"
             busy={pending}
           />
           <ShelfPager
-            page={pager.page}
-            pages={pager.pages}
-            start={pager.start}
-            end={pager.end}
-            total={items.length}
-            onGo={pager.go}
+            page={paged.page}
+            pages={paged.pages}
+            start={paged.start}
+            end={paged.end}
+            total={kinds.shown.length}
+            onGo={paged.go}
             label="Watched"
           />
         </>
@@ -191,15 +260,28 @@ export function ListsSection() {
   );
 }
 
-function SectionHeading({ title, count }: { title: string; count?: number }) {
+function SectionHeading({
+  title,
+  count,
+  filter,
+}: {
+  title: string;
+  count?: number;
+  /** The kind chips, where the shelf holds both films and shows. */
+  filter?: React.ReactNode;
+}) {
   return (
-    <div className="mb-6 flex items-center justify-between gap-4">
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
       <h3 className="font-title-lg text-title-lg text-on-surface">{title}</h3>
-      {count ? (
-        <span className="shrink-0 font-label-md text-label-md text-on-surface-variant">
-          {count} {count === 1 ? "title" : "titles"}
-        </span>
-      ) : null}
+
+      <div className="flex flex-wrap items-center gap-4">
+        {filter}
+        {count ? (
+          <span className="shrink-0 font-label-md text-label-md text-on-surface-variant">
+            {count} {count === 1 ? "title" : "titles"}
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }
