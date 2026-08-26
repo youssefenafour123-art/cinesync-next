@@ -18,6 +18,7 @@ import {
   WatchlistSection,
 } from "@/components/library/SavedSections";
 import { PeoplePanel } from "@/components/profile/PeoplePanel";
+import { WatchTimeCard } from "@/components/profile/WatchTimeCard";
 import { SavedTitleGrid } from "@/components/ui/SavedTitleGrid";
 import { TopFive } from "@/components/ui/TopFive";
 import { CountUp } from "@/components/ui/CountUp";
@@ -331,6 +332,14 @@ function Overview({ onOpenView }: { onOpenView: (view: View) => void }) {
     <div className="flex flex-col gap-gutter lg:flex-row">
       {/* ---- Left rail ---- */}
       <aside className="w-full shrink-0 space-y-6 lg:w-72">
+        {/*
+           Above "Titles saved" when there is a connected library behind it,
+           and absent entirely when there is not. Hours watched is the more
+           interesting number of the two, and it is the one this profile could
+           never honestly show until Stremio started supplying it.
+        */}
+        <WatchTimeCard />
+
         {/*
            The hero number is what you have saved, because it is the one figure
            this app actually knows and the one that grows as it is used. The

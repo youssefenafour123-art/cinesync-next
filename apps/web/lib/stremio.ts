@@ -82,6 +82,19 @@ export interface LibrarySnapshot {
   /** The most recently played row, if the account has ever played anything. */
   lastWatched?: WatchedTitle;
   /**
+   * How long the account has spent playing things, and how much of it was
+   * episodes.
+   *
+   * Both are Stremio's own counters, summed — nothing here is estimated.
+   * `overallTimeWatched` accumulates across sessions and survives a title
+   * being finished, where `timeWatched` is only the current video's tally and
+   * came to a tenth of the real figure when tried.
+   */
+  watchedMs?: number;
+  /** Completed videos on series rows, which is what an episode finished is. */
+  episodes?: number;
+
+  /**
    * Everything the account has *finished*, which is a different question from
    * `lastWatched`.
    *
@@ -129,6 +142,16 @@ export function mergeSnapshots(snapshots: LibrarySnapshot[]): LibrarySnapshot {
        the later of the two dates is the honest one — that is when this person
        last saw it, whichever account they used.
     */
+    /*
+       Time and episodes add up across accounts rather than taking the larger.
+
+       Two connected accounts are two places the same person watched things,
+       and the question the profile asks is how long *they* have spent — not
+       how long the busier of their logins has.
+    */
+    if (snap.watchedMs) merged.watchedMs = (merged.watchedMs ?? 0) + snap.watchedMs;
+    if (snap.episodes) merged.episodes = (merged.episodes ?? 0) + snap.episodes;
+
     for (const title of snap.watched ?? []) {
       const seen = (merged.watched ??= []);
       const existing = seen.find((w) => w.imdbId === title.imdbId);
@@ -313,6 +336,21 @@ export async function fetchLibrarySnapshot(authKey: string): Promise<LibrarySnap
       // And the stricter question, for the Watched list. Same row, same loop.
       const finished = finishedFrom(row);
       if (finished) (snapshot.watched ??= []).push(finished);
+
+      /*
+         The totals behind the profile's time card.
+
+         Counted over every row including removed ones: deleting a title from
+         a library does not un-watch it, and a card that dropped an hour off
+         someone's life because they tidied their shelf would be lying.
+      */
+      const state = row.state;
+      if (state) {
+        snapshot.watchedMs = (snapshot.watchedMs ?? 0) + (state.overallTimeWatched ?? 0);
+        if (row.type === "series") {
+          snapshot.episodes = (snapshot.episodes ?? 0) + (state.timesWatched ?? 0);
+        }
+      }
     }
     return snapshot;
   } catch {
