@@ -8,6 +8,7 @@ import { useLibraryActions } from "@/lib/useLibraryActions";
 import { useTrailer } from "@/lib/useTrailer";
 import { useReducedMotion } from "@/lib/useReducedMotion";
 import { PosterImage } from "./PosterImage";
+import { heroBackdrop } from "@/lib/rotation";
 import { Icon } from "./Icon";
 
 const ADVANCE_MS = 8000;
@@ -155,7 +156,7 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
               than it was when it was doubling as a scrim.
             */}
             <PosterImage
-              src={item.backdrop || item.poster}
+              src={heroBackdrop(item.backdrop, item.poster)}
               alt=""
               className="h-full w-full object-cover opacity-80"
             />

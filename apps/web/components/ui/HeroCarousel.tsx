@@ -5,6 +5,7 @@ import type { MediaItem } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 import { useTrailer } from "@/lib/useTrailer";
 import { PosterImage } from "./PosterImage";
+import { heroBackdrop } from "@/lib/rotation";
 
 const AUTO_ADVANCE_MS = 10_000;
 
@@ -52,7 +53,7 @@ export function HeroCarousel({ items }: { items: MediaItem[] }) {
           <div key={item.key} className={`hero-slide${active ? " active" : ""}`} aria-hidden={!active}>
             <div className="hero-video-wrapper">
               <PosterImage
-                src={item.backdrop || item.poster}
+                src={heroBackdrop(item.backdrop, item.poster)}
                 alt=""
                 className="absolute inset-0 h-full w-full object-cover opacity-60"
               />

@@ -69,6 +69,36 @@ export function posterVariant(primary?: string, variants?: string[]): string | u
  * 156px at 2x wants 312 device pixels, which `w342` covers and `w185` would
  * visibly soften even through the grade.
  */
+/**
+ * What a hero should actually load behind its copy.
+ *
+ * Cinemeta hands back Metahub's `background/medium`, and that image is
+ * **980KB** — there is no smaller variant: `background/small` returns a 93-byte
+ * error and `large` is byte-identical to medium. On a phone that is five
+ * seconds of a Fast 3G connection for artwork sitting behind two gradients on a
+ * 390px screen, and the hero fetches a fresh one every time it advances a
+ * slide: measured still arriving 36 seconds into a load, one per slide, long
+ * after everything else had finished.
+ *
+ * Below `sm` the poster is used instead — around 50KB, cropped by
+ * `object-cover` anyway, and exactly what the hero already falls back to for a
+ * title with no backdrop at all. Above it nothing changes: a widescreen
+ * backdrop filling a desktop hero is what that download is for.
+ *
+ * Reads the viewport at call time, the same way `sizedPoster` reads the pixel
+ * ratio, and gives the desktop answer on the server where neither exists.
+ */
+export function heroBackdrop(backdrop?: string, poster?: string): string | undefined {
+  if (typeof window === "undefined") return backdrop || poster;
+  if (!backdrop) return poster;
+
+  const narrow = window.matchMedia("(max-width: 639px)").matches;
+  // Only Metahub's is unsizeable; a TMDB backdrop already arrives at w780.
+  const heavy = backdrop.includes("images.metahub.space");
+
+  return narrow && heavy && poster ? poster : backdrop;
+}
+
 export function backdropPoster(url: string): string {
   if (typeof window === "undefined") return url;
   return url.replace("/w500/", window.devicePixelRatio >= 1.5 ? "/w342/" : "/w185/");
