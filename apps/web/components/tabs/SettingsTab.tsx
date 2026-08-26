@@ -32,6 +32,16 @@ const SECTIONS = [
   */
   { id: "accounts", label: "Connected Accounts", icon: "link" },
   { id: "sync", label: "Sync Settings", icon: "sync" },
+  /*
+     Notifications were settings without a home.
+
+     The sound a follow makes was filed under "Sync Settings" — the section
+     about pushing an IMDb list into Stremio — with nothing in this sidebar
+     naming it, so the only way to find it was to read every row of an
+     unrelated panel. Reported as the setting not existing, which is what a
+     setting nobody can find amounts to.
+  */
+  { id: "notifications", label: "Notifications", icon: "notifications" },
   { id: "appearance", label: "Appearance", icon: "palette" },
   { id: "api", label: "API Integrations", icon: "api" },
 ] as const;
@@ -98,32 +108,46 @@ export function SettingsTab() {
             <h3 className="mb-6 border-b border-white/10 pb-4 font-title-lg text-title-lg text-on-surface">
               Sync Settings
             </h3>
+            <Toggle
+              label="Background Auto-Sync"
+              description="Re-run the sync automatically the next time you open My Library."
+              checked={settings.autoSync}
+              onChange={(v) => updateSettings({ autoSync: v })}
+            />
+          </section>
+
+          {/* ---- Notifications ---- */}
+          <section
+            id="settings-notifications"
+            className="glass-panel scroll-mt-28 rounded-lg p-6 md:p-8"
+          >
+            <h3 className="mb-6 border-b border-white/10 pb-4 font-title-lg text-title-lg text-on-surface">
+              Notifications
+            </h3>
             <div className="space-y-6">
               <Toggle
-                label="Background Auto-Sync"
-                description="Re-run the sync automatically the next time you open My Library."
-                checked={settings.autoSync}
-                onChange={(v) => updateSettings({ autoSync: v })}
+                label="Notification Sound"
+                description="A projector starting up, when someone follows you or a film you're waiting on is announced."
+                checked={settings.notificationSound}
+                onChange={(v) => {
+                  updateSettings({ notificationSound: v });
+                  // Turning it on plays it once, because a sound setting you
+                  // cannot hear while choosing it is a guess.
+                  if (v) void playNotificationCue();
+                }}
               />
+
+              {/*
+                 Kept with it rather than left behind in Sync. It is a toast
+                 about a sync rather than a sync setting, and the two questions
+                 someone has about being interrupted belong on one screen.
+              */}
               <div className="border-t border-white/5 pt-4">
                 <Toggle
-                  label="Push Notifications"
-                  description="Show a toast when a sync finishes or an item fails."
+                  label="Sync Toasts"
+                  description="Show a notice when a sync finishes or an item fails."
                   checked={settings.pushNotifications}
                   onChange={(v) => updateSettings({ pushNotifications: v })}
-                />
-              </div>
-              <div className="border-t border-white/5 pt-4">
-                <Toggle
-                  label="Notification Sound"
-                  description="Play a short cue when someone follows you or a film you're waiting on is announced."
-                  checked={settings.notificationSound}
-                  onChange={(v) => {
-                    updateSettings({ notificationSound: v });
-                    // Turning it on plays it once, because a sound setting you
-                    // cannot hear while choosing it is a guess.
-                    if (v) void playNotificationCue();
-                  }}
                 />
               </div>
             </div>
