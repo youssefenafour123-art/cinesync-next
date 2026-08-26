@@ -473,9 +473,10 @@ body {
 
    `::before` rather than a second element, because these tiles are shared by
    ten screens and half of them build the tile in JSX that has no room for a
-   spare div. Restarting the animation on re-entry is what the pair of
-   `animation-name: none` / hover rules below does: an animation that has
-   finished will not replay just because the pointer came back.
+   spare div. The base rule names no animation at all, which is what makes a
+   second hover replay the sweep: leaving the card drops the animation, and
+   arriving again applies a fresh one. A finished animation left in place
+   would not restart on its own.
 
    It clips to the tile's own corner radius through `border-radius: inherit`,
    and every host it is applied to carries `overflow-hidden`.
