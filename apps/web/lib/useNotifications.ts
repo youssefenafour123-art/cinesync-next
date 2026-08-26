@@ -107,21 +107,31 @@ function publish() {
  * Ids rather than a count: a count goes up and down as things are read and
  * cleared, and would announce the same follow twice the first time an older
  * notification was deleted. `seen` is only ever added to.
+ *
+ * Keyed by whose notifications they are, rather than emptied on sign-out.
+ * Emptying was the first version and it never announced anything: the hook
+ * runs in two components, each reads the session for itself, and each one
+ * renders once with no user before that resolves — so the sign-out branch
+ * fired on a perfectly normal load and wiped the set between the read that
+ * filled it and the next one. Keyed, a stale set can only be one user's own,
+ * and the id it is compared against is the one being read for.
  */
-let seen: Set<string> | null = null;
+let seenFor: string | null = null;
+let seen = new Set<string>();
 
-function announceNew(next: AppNotification[]): void {
+function announceNew(userId: string, next: AppNotification[]): void {
   /*
-     The first read of a session teaches this what already exists rather than
+     The first read for an account teaches this what already exists rather than
      announcing it. Otherwise every reload would replay whatever was unread as
      though it had just happened.
   */
-  if (seen === null) {
+  if (seenFor !== userId) {
     seen = new Set(next.map((n) => n.id));
+    seenFor = userId;
     return;
   }
 
-  const arrivals = next.filter((n) => !seen!.has(n.id) && !n.read);
+  const arrivals = next.filter((n) => !seen.has(n.id) && !n.read);
   for (const n of next) seen.add(n.id);
 
   if (arrivals.length === 0) return;
@@ -140,7 +150,7 @@ async function load(userId: string): Promise<void> {
   inFlight = (async () => {
     try {
       const next = await fetchNotifications();
-      announceNew(next);
+      announceNew(userId, next);
       items = next;
     } catch {
       // An unreadable list is an empty bell, not an error banner. Nothing here
@@ -218,12 +228,21 @@ export function useNotifications() {
 
   useEffect(() => {
     if (!user) {
+      /*
+         Only when there was somebody to sign out.
+
+         `useSession` starts every consumer at `user: null` and fills it in
+         when the session read comes back, so this branch runs once per mount
+         on a perfectly ordinary load. Left unguarded it cleared `loadedFor`
+         and made the next render re-fetch the whole list — and it used to
+         clear the seen-ids set too, which is why nothing was ever announced.
+         Before the first load there is nothing to tear down.
+      */
+      if (loadedFor === null) return;
+
       items = [];
       loadedFor = null;
       checkedFor = null;
-      // A different account has a different history; without this the next
-      // sign-in would treat every one of their notifications as brand new.
-      seen = null;
       stopLive();
       publish();
       return;
