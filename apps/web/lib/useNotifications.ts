@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "./useSession";
-import { fetchFollowedPeople } from "./people";
+import { fetchFollowedPeople, rememberAnnounced } from "./people";
 import {
   clearNotifications,
   fetchNotifications,
@@ -211,6 +211,30 @@ async function checkReleases(userId: string): Promise<void> {
 
   if (alerts.length === 0) return;
   const added = await recordReleaseAlerts(userId, alerts).catch(() => 0);
+
+  /*
+     Announced once, and remembered as announced.
+
+     Without this the baseline still reads as it did the day the person was
+     followed, so a cleared release notification is re-created by the very next
+     load — the row was the only thing keeping it away. Folding the announced
+     ids into the baseline is what makes "clear" stick.
+
+     Written whether or not the insert added a row: an alert the unique index
+     skipped is one that has already been announced, which is exactly the case
+     this is here to stop repeating.
+  */
+  await Promise.all(
+    people.map(async (person) => {
+      const mine = alerts
+        .filter((a) => a.personTmdbId === person.personTmdbId)
+        .map((a) => a.titleTmdbId);
+      if (mine.length === 0) return;
+      // A baseline that fails to widen costs one repeat, not a broken bell.
+      await rememberAnnounced(person.personTmdbId, person.baseline, mine).catch(() => {});
+    }),
+  );
+
   if (added > 0) await load(userId);
 }
 

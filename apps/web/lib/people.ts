@@ -77,6 +77,42 @@ export async function followPerson(person: {
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Folds titles that have already been announced into a person's baseline.
+ *
+ * The baseline is "what they had announced when you followed them", and the
+ * release check calls anything outside it new. That worked only while the
+ * notification row itself survived: `recordReleaseAlerts` dedupes on the unique
+ * index over (user_id, person_tmdb_id, title_tmdb_id), so the row existing is
+ * what stopped a second announcement. Clearing the bell deletes the row — and
+ * the next page load announced the same film again, for ever. Reported as a
+ * notification that comes back however often it is cleared.
+ *
+ * Announced is the same kind of fact as already-announced-when-followed, so it
+ * belongs in the same place. Once a title is in here the check stops calling it
+ * new, whatever happens to the notification.
+ *
+ * Read-modify-write rather than a Postgres array append, which would need a
+ * function and a migration for a column only its owner may write. Two tabs
+ * racing both write supersets of the same set, so the loser costs one repeat
+ * announcement at worst.
+ */
+export async function rememberAnnounced(
+  personTmdbId: number,
+  baseline: number[],
+  announced: number[],
+): Promise<void> {
+  const merged = [...new Set([...baseline, ...announced])];
+  if (merged.length === baseline.length) return;
+
+  const { error } = await supabaseBrowser()
+    .from("person_follows")
+    .update({ baseline_tmdb_ids: merged })
+    .eq("person_tmdb_id", personTmdbId);
+
+  if (error) throw new Error(error.message);
+}
+
 export async function unfollowPerson(personTmdbId: number): Promise<void> {
   // No user filter: the policy already restricts deletes to your own rows.
   const { error } = await supabaseBrowser()
