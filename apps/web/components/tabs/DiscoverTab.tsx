@@ -28,6 +28,23 @@ export function DiscoverTab({ onWall }: { onWall: (posters: string[]) => void })
 
   return (
     <div className="pb-16">
+      {/*
+         Above the hero, not under it.
+
+         It went in below "Because you watched" and landed below the fold: the
+         hero is 70vh with a 460px floor, so on a 1440x780 window the strip
+         started at 674px against a 780px fold, and on an account that has a
+         personal rail it was further down still. Reported as "I have to scroll
+         to see it", which is the same thing as not having it.
+
+         Ahead of the banner it is unconditionally visible and it costs the
+         banner nothing — the strip is 84px and the hero still clears the fold
+         beneath it down to a 660px window. It is also the honest order: this
+         is the one thing on the tab chosen for the reader, and the hero is a
+         catalogue ranking.
+      */}
+      <GemOfTheWeek />
+
       <HeroSlider items={data?.hero ?? []} />
 
       <div className="mx-auto mt-12 max-w-container-max px-margin-mobile md:px-margin-desktop">
@@ -38,17 +55,6 @@ export function DiscoverTab({ onWall }: { onWall: (posters: string[]) => void })
            it, and it renders nothing at all when there is nothing to say.
         */}
         <BecauseYouWatched />
-
-        {/*
-           Above the rails and below anything personal, which is where a
-           standing recommendation belongs: it is not about you, so it does not
-           outrank "because you watched", and it is one title rather than
-           twenty, so putting it under a rail would bury it. Independent of
-           `/api/discover` for the same reason the rail above it is — its own
-           small request, its own failure, and nothing at all on screen when it
-           has no answer.
-        */}
-        <GemOfTheWeek />
 
         {loading && !data ? (
           <Carousel title="Most Watched Movies" showArrows={false}>

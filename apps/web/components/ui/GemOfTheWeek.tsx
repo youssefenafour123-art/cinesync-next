@@ -24,6 +24,21 @@ import { PosterImage } from "./PosterImage";
  * next one lands. That is what makes it read as a standing recommendation
  * rather than another row of posters.
  *
+ * ## Why it sits above the hero
+ *
+ * It was below it to begin with, under "Because you watched", and it was below
+ * the fold: the hero is `70vh min-h-[460px]`, so measured at 1920x960 the card
+ * started at 800px against a 960px fold and at 1440x780 it started at 674
+ * against 780 — off screen before the personal rail was even in the way, and
+ * further down still on an account that has one. A recommendation nobody
+ * scrolls to is not a recommendation.
+ *
+ * Above the hero it is unconditionally visible, and it costs the hero nothing:
+ * at 84px plus its margin the banner still ends above the fold at every
+ * desktop height down to 660px, which is what the compression below is for.
+ * That is also the honest reading order — this is the one thing on the tab
+ * chosen *for* the reader, and the hero underneath it is a catalogue ranking.
+ *
  * Which title it is comes from `/api/gem` — see there for how the pick is kept
  * still for the week even though the pool behind it is rebuilt hourly.
  */
@@ -108,7 +123,14 @@ export function GemOfTheWeek() {
     : 0;
 
   const saved = watchlist.has(item.imdbId);
-  const meta = [item.year, item.kind === "series" ? "Series" : "Film", item.runtime]
+  const meta = [
+    item.year,
+    item.kind === "series" ? "Series" : "Film",
+    item.runtime,
+    // Worth saying where it applies, and it costs no line of its own now that
+    // the particulars share the label's row.
+    inLibrary ? "In your library" : null,
+  ]
     .filter(Boolean)
     .join(" · ");
 
@@ -118,10 +140,25 @@ export function GemOfTheWeek() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
       aria-label="Gem of the week"
-      className="mb-10"
+      /*
+         The hero's own edges, not the rails'.
+
+         `HeroSlider` fills the container and keeps its margins inside itself,
+         while every rail below is inset by `px-margin-*`. Sitting directly on
+         top of the banner, this belongs to the banner's column — inset by 64px
+         against a hero that is not, it read as a narrower thing floating above
+         a wider one.
+      */
+      className="mx-auto mb-5 w-full max-w-container-max"
     >
-      <div className="gem-card panel-glow group relative flex items-center gap-4 overflow-hidden rounded-[20px] p-3 sm:gap-5 sm:p-4">
-        <div className="relative h-[66px] w-[44px] shrink-0 overflow-hidden rounded-[8px] border border-white/10 bg-surface-container shadow-[0_8px_20px_rgba(0,0,0,0.55)] sm:h-[78px] sm:w-[52px]">
+      <div className="gem-card panel-glow group relative flex items-center gap-3.5 overflow-hidden rounded-[18px] p-3 sm:gap-4">
+        {/*
+           40x60, and the same on every screen. The poster is the tallest thing
+           in the row, so it alone decides the strip's height — and the strip's
+           height is what decides whether the hero still clears the fold under
+           it. See the note at the top of the file.
+        */}
+        <div className="relative h-[60px] w-[40px] shrink-0 overflow-hidden rounded-[6px] border border-white/10 bg-surface-container shadow-[0_6px_16px_rgba(0,0,0,0.55)]">
           <PosterImage
             src={item.poster}
             variants={item.posters}
@@ -131,8 +168,19 @@ export function GemOfTheWeek() {
         </div>
 
         <div className="min-w-0 flex-1">
-          <span className="gem-label block font-label-md text-[10px] font-semibold uppercase tracking-[0.16em]">
-            Gem of the week
+          {/*
+             The label and the title's particulars on one line, which is the
+             line the compression bought. Four stacked lines made this 117px
+             tall; three make it 84, and the difference is whether the hero
+             below still fits on a 660px screen.
+          */}
+          <span className="flex min-w-0 items-baseline gap-1.5">
+            <span className="gem-label shrink-0 font-label-md text-[10px] font-semibold uppercase tracking-[0.16em]">
+              Gem of the week
+            </span>
+            <span className="truncate font-label-md text-[10px] uppercase tracking-[0.1em] text-on-surface/30">
+              · {meta}
+            </span>
           </span>
 
           {/*
@@ -144,7 +192,7 @@ export function GemOfTheWeek() {
           <button
             type="button"
             onClick={() => openDetails(item)}
-            className="mt-0.5 block max-w-full truncate text-left font-title-lg text-[17px] leading-tight text-on-surface transition-colors after:absolute after:inset-0 after:content-[''] hover:text-primary focus-visible:text-primary focus-visible:outline-none sm:text-[19px]"
+            className="mt-0.5 block max-w-full truncate text-left font-title-lg text-[16px] leading-tight text-on-surface transition-colors after:absolute after:inset-0 after:content-[''] hover:text-primary focus-visible:text-primary focus-visible:outline-none sm:text-[18px]"
           >
             {item.title}
           </button>
@@ -158,7 +206,7 @@ export function GemOfTheWeek() {
              is it" without being any taller. Touch never hovers and simply
              keeps the first line, which is the one that earns the space.
           */}
-          <span className="relative mt-1 block h-[16px] overflow-hidden">
+          <span className="relative mt-0.5 block h-[16px] overflow-hidden">
             <span className="absolute inset-0 truncate font-body-md text-[12px] leading-4 text-on-surface/55 transition-opacity duration-300 group-hover:opacity-0 group-focus-within:opacity-0">
               {data?.why}
             </span>
@@ -168,11 +216,6 @@ export function GemOfTheWeek() {
             >
               {item.description}
             </span>
-          </span>
-
-          <span className="mt-1 block truncate font-label-md text-[11px] text-on-surface/35">
-            {meta}
-            {inLibrary ? " · In your library" : ""}
           </span>
         </div>
 
