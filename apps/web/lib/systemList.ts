@@ -211,7 +211,25 @@ export function createSystemListStore(column: SystemListColumn, copy: Copy): Sys
      * remember what it has already sent and never send it again.
      */
     const merge = useCallback(async (titles: SavedTitle[]): Promise<string[]> => {
-      if (!user || !listId || titles.length === 0) return [];
+      if (!user || titles.length === 0) return [];
+
+      /*
+         Wait for the list before deciding there is nothing to do.
+
+         This used to return `[]` when `listId` was still null, which reads as
+         "everything was already there" and is indistinguishable from it at the
+         call site. That is exactly the state an import starts in: the Add
+         Source modal is reachable from Settings, where no shelf has mounted
+         and nothing has loaded the watchlist, so dropping a CSV promptly
+         enough meant two thousand titles going nowhere under the message
+         "They were already in your watchlist."
+
+         Failing loudly is the other half. A caller that cannot tell an empty
+         result from a refused one cannot report either honestly, and both of
+         this hook's bulk callers do report.
+      */
+      if (!listId) await load(user.id);
+      if (!listId) throw new Error(copy.missing);
 
       const missing = titles.filter((t) => t.imdbId && !saved.has(t.imdbId));
       if (missing.length === 0) return [];

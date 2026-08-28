@@ -72,7 +72,7 @@ export function LibraryTab() {
               </h3>
               <p className="mt-1 font-body-md text-body-md text-on-surface-variant">
                 {connectedCount > 0 ? (
-                  "Merge every connected IMDb list into your connected Stremio account libraries."
+                  "Merge your CineSync watchlist and every connected IMDb list into your connected Stremio account libraries."
                 ) : (
                   /*
                      Linking moved to Settings, so this panel is the one place

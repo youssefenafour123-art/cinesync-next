@@ -9,6 +9,7 @@ import {
 } from "./stremio";
 import { stremioAccounts, useSourcesStore } from "@/store/useSourcesStore";
 import { useAppStore } from "@/store/useAppStore";
+import { useWatchlist } from "./useWatchlist";
 import type { HistoryEntry, SyncItem } from "./types";
 
 export type SyncPhase = "idle" | "running" | "done" | "cancelled" | "blocked";
@@ -59,6 +60,20 @@ export function useSync() {
   const sources = useSourcesStore((s) => s.sources);
   const addHistory = useSourcesStore((s) => s.addHistory);
   const setLibrary = useAppStore((s) => s.setLibrary);
+  /*
+     The watchlist syncs too, and it is the reason an import reaches Stremio at
+     all on a machine that did not perform it.
+
+     `sources` is localStorage: uploading a CSV on a laptop puts the titles in
+     two places, this browser's source list and the account's watchlist, and
+     only the first of those used to be a thing Start Sync could read. So the
+     same account, signed in on a phone, had a full watchlist and "Nothing to
+     sync". The watchlist is the copy that belongs to the account rather than
+     to the browser, which makes it the better source of the two — and it also
+     carries everything saved by pressing the button on a title, which no
+     import ever touched.
+  */
+  const { items: watchlist } = useWatchlist();
 
   const reset = useCallback(() => {
     cancelRef.current = false;
@@ -79,9 +94,13 @@ export function useSync() {
 
     const accounts = stremioAccounts(sources);
 
-    // Merge every IMDb source — URL-imported lists and CSV uploads alike —
-    // deduping by IMDb id so the same title across two lists syncs once.
+    // Merge the account's watchlist and every IMDb source — URL-imported lists
+    // and CSV uploads alike — deduping by IMDb id so a title in the watchlist
+    // and in two imports still syncs once.
     const pending = new Map<string, SyncItem>();
+    for (const t of watchlist) {
+      pending.set(t.imdbId, { id: t.imdbId, title: t.title, type: t.kind });
+    }
     for (const s of sources) {
       if (s.type === "imdb_list" || s.type === "imdb_csv") {
         for (const i of s.items) pending.set(i.id, i);
@@ -96,10 +115,10 @@ export function useSync() {
         title: "Nothing to sync",
         detail:
           !accounts.length && !items.length
-            ? "Connect a Stremio account and add an IMDb list first."
+            ? "Connect a Stremio account, then save something or import an IMDb list."
             : !accounts.length
               ? "Connect at least one Stremio account first."
-              : "Add at least one IMDb list first.",
+              : "Your watchlist is empty and no IMDb list is connected.",
       });
       return;
     }
@@ -260,7 +279,7 @@ export function useSync() {
           : "Your library is up to date.",
       percent: cancelled ? s.percent : 100,
     }));
-  }, [sources, addHistory, setLibrary]);
+  }, [sources, watchlist, addHistory, setLibrary]);
 
   return { state, start, cancel, reset, running: state.phase === "running" };
 }

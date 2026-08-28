@@ -104,6 +104,13 @@ export function useWatchedSync(): void {
         for (const t of candidates) sent.add(t.imdbId);
         writeSent(sent);
         void added;
+      } catch {
+        /*
+           `merge` throws when the account has no watched list to write to —
+           before 0008 has been run, mostly. Nothing is recorded as sent, so
+           the next refresh tries again, and nothing is shown: this runs on a
+           timer nobody pressed.
+        */
       } finally {
         busy.current = false;
       }
