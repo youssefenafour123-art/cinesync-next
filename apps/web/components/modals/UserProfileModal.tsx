@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useSession } from "@/lib/useSession";
 import { useFollowing } from "@/lib/useFollowing";
@@ -196,7 +196,30 @@ function VisibleLists({ userId, self }: { userId: string; self: boolean }) {
     };
   }, [userId]);
 
-  if (lists !== null && lists.length === 0) return null;
+  /*
+     An empty list the database made is not a shelf, it is a row that exists
+     because the signup trigger made it.
+
+     Everyone has a Watchlist, a Watched and a Stremio Library whether they
+     have ever used one or not, so without this every profile on the service
+     opens onto three shelves reading "0 titles" — and the Stremio one is empty
+     for the great majority, who have no Stremio account connected. A list
+     somebody made themselves is kept even when empty: making it was a
+     decision, and hiding it would misreport what they have.
+
+     Filtered here rather than in the effect above, because `self` comes from
+     `useSession` and that is null on the first render of every consumer. As an
+     effect dependency it would fetch the same profile twice.
+  */
+  const shown = useMemo(
+    () =>
+      lists === null || self
+        ? lists
+        : lists.filter((l) => l.itemCount > 0 || !(l.isWatchlist || l.isWatched || l.isStremio)),
+    [lists, self],
+  );
+
+  if (shown !== null && shown.length === 0) return null;
 
   return (
     <section className="mt-8">
@@ -204,11 +227,11 @@ function VisibleLists({ userId, self }: { userId: string; self: boolean }) {
         {self ? "Your lists" : "Lists"}
       </h3>
 
-      {lists === null ? (
+      {shown === null ? (
         <div className="h-[76px] animate-pulse rounded-lg bg-surface-container" />
       ) : (
         <div className="space-y-3">
-          {lists.map((list) => (
+          {shown.map((list) => (
             <VisibleList
               key={list.id}
               list={list}
@@ -251,7 +274,13 @@ function VisibleList({
     };
   }, [open, items, list.id]);
 
-  const icon = list.isWatchlist ? "bookmark" : list.isWatched ? "visibility" : "list";
+  const icon = list.isWatchlist
+    ? "bookmark"
+    : list.isWatched
+      ? "visibility"
+      : list.isStremio
+        ? "subscriptions"
+        : "list";
 
   return (
     <div className="glass-card overflow-hidden rounded-lg">

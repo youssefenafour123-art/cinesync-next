@@ -118,7 +118,15 @@ export function useLists() {
         // watchlist first, so the end of the array is where this belongs.
         lists = [
           ...lists,
-          { id, name: name.trim(), visibility, isWatchlist: false, isWatched: false, itemCount: 0 },
+          {
+            id,
+            name: name.trim(),
+            visibility,
+            isWatchlist: false,
+            isWatched: false,
+            isStremio: false,
+            itemCount: 0,
+          },
         ];
         publish();
         return id;
@@ -205,12 +213,15 @@ export function useLists() {
     lists,
     /** The lists the user made, without the watchlist the trigger made for them. */
     /*
-       The lists someone made, which is neither of the two the database made
-       for them. Both flags, not just the watchlist: a "Watched" row appearing
-       under My Lists — deletable, renameable, with a visibility menu — would
-       be the same mistake the watchlist filter was written to avoid.
+       The lists someone made, which is none of the three the database made
+       for them. Every flag, not just the watchlist: a "Watched" or "Stremio
+       Library" row appearing under My Lists — deletable, renameable, with a
+       visibility menu — would be the same mistake the watchlist filter was
+       written to avoid. The Stremio one would be worse than cosmetic, since
+       deleting it takes the mirror's target with it and the next library read
+       has nowhere to write.
     */
-    custom: lists.filter((l) => !l.isWatchlist && !l.isWatched),
+    custom: lists.filter((l) => !l.isWatchlist && !l.isWatched && !l.isStremio),
     ready: loaded,
     signedIn: Boolean(user),
     pending,

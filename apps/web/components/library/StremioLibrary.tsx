@@ -6,6 +6,7 @@ import { useSourcesStore, stremioAccounts } from "@/store/useSourcesStore";
 import { useLibraryActions } from "@/lib/useLibraryActions";
 import { useLibraryRefresh } from "@/lib/useLibrarySync";
 import { SavedTitleGrid } from "@/components/ui/SavedTitleGrid";
+import { SystemListVisibility } from "@/components/library/SavedSections";
 import { ShelfPager, useShelfAnchor, useShelfPager } from "@/components/ui/ShelfPager";
 import { Icon } from "@/components/ui/Icon";
 
@@ -85,15 +86,30 @@ export function StremioLibrary() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          disabled={refreshing}
-          className="flex shrink-0 items-center gap-2 rounded-full bg-surface-container px-4 py-2 font-label-md text-label-md text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface disabled:opacity-60"
-        >
-          <Icon name="refresh" className={`text-[18px] ${refreshing ? "animate-spin" : ""}`} />
-          {refreshing ? "Refreshing…" : "Refresh"}
-        </button>
+        <div className="flex flex-wrap items-center gap-4">
+          {/*
+             Who else sees this shelf.
+
+             The same control the watchlist and the watched list carry, and it
+             governs the mirror rather than what is on screen here: the grid
+             below is read live from Stremio with this browser's authKey, and
+             the copy `useStremioListSync` writes is the only thing anyone else
+             can be shown. Set it to Only me and that copy stops being readable
+             — it is still written, so widening it again shows a current
+             library rather than an empty one.
+          */}
+          <SystemListVisibility column="is_stremio" />
+
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={refreshing}
+            className="flex shrink-0 items-center gap-2 rounded-full bg-surface-container px-4 py-2 font-label-md text-label-md text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface disabled:opacity-60"
+          >
+            <Icon name="refresh" className={`text-[18px] ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {loaded && items.length > 0 ? (

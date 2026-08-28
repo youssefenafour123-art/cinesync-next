@@ -8,6 +8,7 @@ import { useMotionPreference } from "@/lib/useReducedMotion";
 import { useSourcesStore } from "@/store/useSourcesStore";
 import { useLibrarySync } from "@/lib/useLibrarySync";
 import { useWatchedSync } from "@/lib/useWatchedSync";
+import { useStremioListSync } from "@/lib/useStremioListSync";
 import { speculationWelcome, useTabPrefetch } from "@/lib/useTabPrefetch";
 import { primeNotificationCue } from "@/lib/notificationCue";
 
@@ -166,6 +167,11 @@ export default function Home() {
   // And puts what those libraries have finished into the Watched list. Reads
   // the snapshot the line above refreshes, so it costs no request of its own.
   useWatchedSync();
+
+  // And mirrors the libraries themselves into the list a follower can read.
+  // Same snapshot again — the only thing anybody else can be shown of a
+  // Stremio library is a copy this account writes down.
+  useStremioListSync();
 
   // Warms the other tabs' payloads once the page goes idle, so switching to
   // one renders populated instead of paying its route handler's cold cost.

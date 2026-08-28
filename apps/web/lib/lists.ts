@@ -48,17 +48,24 @@ export interface ListSummary {
   visibility: Visibility;
   isWatchlist: boolean;
   isWatched: boolean;
+  isStremio: boolean;
   itemCount: number;
 }
 
 /**
- * The two lists the database makes for you.
+ * The three lists the database makes for you.
  *
  * A flag column each on `lists`, rather than a `kind` — that is how the
  * watchlist was already modelled, and a partial unique index per flag is what
  * keeps there being exactly one of each per account.
+ *
+ * `is_stremio` is the odd one of the three: the other two are records the
+ * account writes by pressing a button, and that one is a mirror of whatever
+ * the connected Stremio accounts hold, written by `useStremioListSync`. It is
+ * a list all the same, which is the point — it gets the visibility menu, the
+ * profile row and the follower read without any of them being written twice.
  */
-export type SystemListColumn = "is_watchlist" | "is_watched";
+export type SystemListColumn = "is_watchlist" | "is_watched" | "is_stremio";
 
 export interface Favourite extends SavedTitle {
   rank: number;
@@ -102,24 +109,32 @@ interface ListRow {
   visibility: Visibility;
   is_watchlist: boolean;
   is_watched?: boolean;
+  is_stremio?: boolean;
   list_items: { count: number }[];
 }
 
-const LIST_COLUMNS = "id,name,description,visibility,is_watchlist,is_watched,list_items(count)";
-
 /*
-   The same select, without the column 0008 adds.
+   The select, and the same select with each later column taken back off.
 
    Migrations here are run by hand against production, so there is a window
    where the deployed code is ahead of the schema. Asking for a column that
    does not exist yet fails the whole query — every list would vanish from the
    Library and the profile until someone opened the SQL editor. Falling back
-   costs one retry in that window and nothing afterwards.
-*/
-const LIST_COLUMNS_PRE_WATCHED = "id,name,description,visibility,is_watchlist,list_items(count)";
+   costs one retry per missing column in that window and nothing afterwards.
 
-function isMissingWatchedColumn(message: string): boolean {
-  return /is_watched/.test(message) && /(does not exist|column)/i.test(message);
+   Ordered newest-first, so a database at 0009 pays one retry and a database at
+   0008 pays two.
+*/
+const LIST_COLUMN_SETS = [
+  "id,name,description,visibility,is_watchlist,is_watched,is_stremio,list_items(count)",
+  "id,name,description,visibility,is_watchlist,is_watched,list_items(count)",
+  "id,name,description,visibility,is_watchlist,list_items(count)",
+];
+
+/** Whether an error is Postgres saying it has never heard of that column. */
+function isMissingColumn(message: string, column?: string): boolean {
+  if (!/(does not exist|column)/i.test(message)) return false;
+  return column ? message.includes(column) : /is_watched|is_stremio/.test(message);
 }
 
 /**
@@ -142,9 +157,9 @@ export async function fetchMyLists(userId: string): Promise<ListSummary[]> {
       .order("is_watchlist", { ascending: false })
       .order("created_at", { ascending: true });
 
-  let { data, error } = await read(LIST_COLUMNS);
-  if (error && isMissingWatchedColumn(error.message)) {
-    ({ data, error } = await read(LIST_COLUMNS_PRE_WATCHED));
+  let { data, error } = await read(LIST_COLUMN_SETS[0]);
+  for (let i = 1; i < LIST_COLUMN_SETS.length && error && isMissingColumn(error.message); i++) {
+    ({ data, error } = await read(LIST_COLUMN_SETS[i]));
   }
 
   if (error) throw new Error(error.message);
@@ -156,6 +171,7 @@ export async function fetchMyLists(userId: string): Promise<ListSummary[]> {
     visibility: row.visibility,
     isWatchlist: row.is_watchlist,
     isWatched: row.is_watched ?? false,
+    isStremio: row.is_stremio ?? false,
     itemCount: row.list_items?.[0]?.count ?? 0,
   }));
 }
@@ -211,10 +227,11 @@ export async function fetchSystemListId(
     .maybeSingle();
 
   if (error) {
-    // Before 0008 runs there is no `is_watched` column, and no watched list to
-    // find. An account without one behaves as an empty one rather than as an
-    // error nobody can act on.
-    if (isMissingWatchedColumn(error.message)) return null;
+    // Before 0008 runs there is no `is_watched` column, and before 0010 no
+    // `is_stremio` — and in either case no such list to find. An account
+    // without one behaves as an empty one rather than as an error nobody can
+    // act on.
+    if (isMissingColumn(error.message, column)) return null;
     throw new Error(error.message);
   }
   return (data as { id: string } | null)?.id ?? null;
@@ -299,6 +316,26 @@ export async function fetchListsHolding(
 
   if (error) throw new Error(error.message);
   return new Set((data ?? []).map((r) => (r as { list_id: string }).list_id));
+}
+
+/**
+ * Removes several titles from one list at once.
+ *
+ * The counterpart to `addManyToList`, and it exists for the same caller: the
+ * Stremio mirror, which has to write both halves of a diff. Deleting a
+ * hundred titles one request at a time would make emptying a library the
+ * slowest thing this app does, and a mirror that only ever grows is not a
+ * mirror.
+ */
+export async function removeManyFromList(listId: string, imdbIds: string[]): Promise<void> {
+  if (imdbIds.length === 0) return;
+
+  const { error } = await supabaseBrowser()
+    .from("list_items")
+    .delete()
+    .eq("list_id", listId)
+    .in("imdb_id", imdbIds);
+  if (error) throw new Error(error.message);
 }
 
 export async function removeFromList(listId: string, imdbId: string): Promise<void> {

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useWatchlist } from "@/lib/useWatchlist";
 import { useWatched } from "@/lib/useWatched";
 import { useLists } from "@/lib/useLists";
-import type { ListSummary, SavedTitle, Visibility } from "@/lib/lists";
+import type { ListSummary, SavedTitle, SystemListColumn, Visibility } from "@/lib/lists";
 import { fetchListItems } from "@/lib/lists";
 import {
   SavedTitleGrid,
@@ -363,23 +363,28 @@ function VisibilityPicker({
 }
 
 /**
- * Who can see one of the two lists the database made for you.
+ * Who can see one of the three lists the database made for you.
  *
- * Both have carried a visibility since 0003 — followers-only, the same default
- * a new list gets — and nothing in the app has ever shown it. `ListsSection`
- * drops the watchlist and the watched list on purpose, because neither can be
- * renamed or deleted, and the visibility menu that sits beside those controls
- * went out with them. So the one list people most want to share was the one
- * list with no way to say so, and no way to tell whether it was shared
- * already. The menu belongs on the shelf itself.
+ * All three carry a visibility — followers-only, the same default a new list
+ * gets — and nothing in the app used to show it. `ListsSection` drops them on
+ * purpose, because none can be renamed or deleted, and the visibility menu
+ * that sits beside those controls went out with them. So the lists people most
+ * want to share were the ones with no way to say so, and no way to tell
+ * whether they were shared already. The menu belongs on the shelf itself.
  *
- * It reads from `useLists`, which holds every row including these two — the
+ * Exported because the third shelf is not on this page: the Stremio library
+ * has its own component, and its menu has to sit in that header rather than
+ * being a fourth section here that duplicates it.
+ *
+ * It reads from `useLists`, which holds every row including these three — the
  * same module-level store `ListsSection` is already using further down this
  * page, so this costs no extra request.
  */
-function SystemListVisibility({ column }: { column: "is_watchlist" | "is_watched" }) {
+export function SystemListVisibility({ column }: { column: SystemListColumn }) {
   const { lists, ready, setVisibility } = useLists();
-  const list = lists.find((l) => (column === "is_watchlist" ? l.isWatchlist : l.isWatched));
+  const list = lists.find((l) =>
+    column === "is_watchlist" ? l.isWatchlist : column === "is_watched" ? l.isWatched : l.isStremio,
+  );
 
   // Nothing at all until the row is known. A control that guesses "Followers"
   // and then corrects itself is worse than one that arrives a moment late,
