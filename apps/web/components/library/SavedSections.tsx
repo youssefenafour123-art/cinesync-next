@@ -80,6 +80,7 @@ export function WatchlistSection() {
       <SectionHeading
         title="Watchlist"
         count={ready ? items.length : undefined}
+        visibility={<SystemListVisibility column="is_watchlist" />}
         filter={
           kinds.split ? (
             <KindChips
@@ -147,6 +148,7 @@ export function WatchedSection() {
       <SectionHeading
         title="Watched"
         count={ready ? items.length : undefined}
+        visibility={<SystemListVisibility column="is_watched" />}
         filter={
           kinds.split ? (
             <KindChips
@@ -264,11 +266,14 @@ function SectionHeading({
   title,
   count,
   filter,
+  visibility,
 }: {
   title: string;
   count?: number;
   /** The kind chips, where the shelf holds both films and shows. */
   filter?: React.ReactNode;
+  /** Who can see this shelf — only the two system lists pass one. */
+  visibility?: React.ReactNode;
 }) {
   return (
     <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -281,6 +286,7 @@ function SectionHeading({
             {count} {count === 1 ? "title" : "titles"}
           </span>
         ) : null}
+        {visibility}
       </div>
     </div>
   );
@@ -305,6 +311,95 @@ const VISIBILITY: { value: Visibility; label: string; icon: string; hint: string
   },
   { value: "public", label: "Anyone", icon: "public", hint: "Anyone with your profile can see it." },
 ];
+
+/** The chosen state, as it is named and drawn to the person choosing it. */
+function visibilityMeta(value: Visibility) {
+  return VISIBILITY.find((v) => v.value === value) ?? VISIBILITY[1];
+}
+
+/**
+ * The three states as one control.
+ *
+ * A native select: three mutually exclusive states, and the platform already
+ * renders that correctly on a phone, with a keyboard, and to a screen reader.
+ * Lifted out of `ListRow` when the watchlist needed the same menu — two copies
+ * of a security-relevant control is two places for the labels to disagree
+ * about what "Followers" means.
+ */
+function VisibilityPicker({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  /** Reads out on the control, so it has to name the list, not just the setting. */
+  label: string;
+  value: Visibility;
+  onChange: (v: Visibility) => void;
+}) {
+  const current = visibilityMeta(value);
+
+  return (
+    <>
+      <label className="sr-only" htmlFor={id}>
+        {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value as Visibility)}
+        title={current.hint}
+        className="rounded-full bg-surface-container px-3 py-2 font-label-md text-label-md text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
+      >
+        {VISIBILITY.map((v) => (
+          <option key={v.value} value={v.value} className="bg-surface-container text-on-surface">
+            {v.label}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+}
+
+/**
+ * Who can see one of the two lists the database made for you.
+ *
+ * Both have carried a visibility since 0003 — followers-only, the same default
+ * a new list gets — and nothing in the app has ever shown it. `ListsSection`
+ * drops the watchlist and the watched list on purpose, because neither can be
+ * renamed or deleted, and the visibility menu that sits beside those controls
+ * went out with them. So the one list people most want to share was the one
+ * list with no way to say so, and no way to tell whether it was shared
+ * already. The menu belongs on the shelf itself.
+ *
+ * It reads from `useLists`, which holds every row including these two — the
+ * same module-level store `ListsSection` is already using further down this
+ * page, so this costs no extra request.
+ */
+function SystemListVisibility({ column }: { column: "is_watchlist" | "is_watched" }) {
+  const { lists, ready, setVisibility } = useLists();
+  const list = lists.find((l) => (column === "is_watchlist" ? l.isWatchlist : l.isWatched));
+
+  // Nothing at all until the row is known. A control that guesses "Followers"
+  // and then corrects itself is worse than one that arrives a moment late,
+  // because the guess is a claim about who is reading this list.
+  if (!ready || !list) return null;
+
+  const current = visibilityMeta(list.visibility);
+
+  return (
+    <span className="flex shrink-0 items-center gap-2">
+      <Icon name={current.icon} className="text-[16px] text-on-surface-variant" aria-hidden />
+      <VisibilityPicker
+        id={`vis-${list.id}`}
+        label={`Who can see your ${list.name.toLowerCase()}`}
+        value={list.visibility}
+        onChange={(v) => void setVisibility(list.id, v)}
+      />
+    </span>
+  );
+}
 
 function ListRow({
   list,
@@ -352,7 +447,7 @@ function ListRow({
     return () => clearTimeout(t);
   }, [armed]);
 
-  const current = VISIBILITY.find((v) => v.value === list.visibility) ?? VISIBILITY[1];
+  const current = visibilityMeta(list.visibility);
 
   return (
     <div className="glass-card overflow-hidden rounded-lg">
@@ -390,27 +485,12 @@ function ListRow({
         </button>
 
         <div className="flex shrink-0 items-center gap-2">
-          {/*
-             A native select: three mutually exclusive states, and the platform
-             already renders that correctly on a phone, with a keyboard, and to
-             a screen reader.
-          */}
-          <label className="sr-only" htmlFor={`vis-${list.id}`}>
-            Who can see {list.name}
-          </label>
-          <select
+          <VisibilityPicker
             id={`vis-${list.id}`}
+            label={`Who can see ${list.name}`}
             value={list.visibility}
-            onChange={(e) => onVisibility(e.target.value as Visibility)}
-            title={current.hint}
-            className="rounded-full bg-surface-container px-3 py-2 font-label-md text-label-md text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
-          >
-            {VISIBILITY.map((v) => (
-              <option key={v.value} value={v.value} className="bg-surface-container text-on-surface">
-                {v.label}
-              </option>
-            ))}
-          </select>
+            onChange={onVisibility}
+          />
 
           {/*
              Two presses to delete, and the arming expires. There is no undo
