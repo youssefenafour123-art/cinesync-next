@@ -428,14 +428,33 @@ export function metahubPoster(imdbId: string): string {
   return `https://images.metahub.space/poster/small/${imdbId}/img`;
 }
 
-export async function putSyncItem(item: SyncItem, authKey: string): Promise<void> {
-  const payload = libraryItem(item.id, item.title, item.type, metahubPoster(item.id));
+/**
+ * How many library rows go into one `datastorePut`.
+ *
+ * `changes` has always been an array and this app was only ever putting one
+ * thing in it, which made a two-hundred-title IMDb import two hundred requests
+ * at ten a second. The proxy in front of api.strem.io rate-limits per address
+ * per method, so the first thirty landed and every one after them came back
+ * 429 — counted here as "failed", which is exactly what a sync of a CSV export
+ * looked like: a handful added and the rest in red.
+ *
+ * A hundred rows is roughly 60KB of JSON, comfortably inside the proxy's
+ * 256KB body cap, and turns that same import into two requests.
+ */
+export const SYNC_BATCH = 100;
+
+export async function putSyncItems(items: SyncItem[], authKey: string): Promise<void> {
+  if (!items.length) return;
+
+  const changes = items.map((item) =>
+    libraryItem(item.id, item.title, item.type, metahubPoster(item.id)),
+  );
   const data = await call<StremioError>("datastorePut", {
     authKey,
     collection: "libraryItem",
-    changes: [payload],
+    changes,
   });
-  if (data.error) throw new Error(data.error.message || "datastorePut rejected the item");
+  if (data.error) throw new Error(data.error.message || "datastorePut rejected the batch");
 }
 
 /**

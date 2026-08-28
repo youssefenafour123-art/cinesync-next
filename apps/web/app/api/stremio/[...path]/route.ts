@@ -40,10 +40,29 @@ const ALLOWED = new Set(["login", "datastoreGet", "datastorePut"]);
  * being free.
  */
 const WINDOW_MS = 60_000;
-const MAX_PER_WINDOW = 30;
+
+/*
+   Per method, because the three do not carry the same risk and did not want
+   the same budget.
+
+   `login` is the one worth being mean to: it takes an email and a password and
+   reports whether they work, and nobody signs in thirty times a minute. The
+   two datastore methods carry an authKey the caller already has — they can
+   only reach the account it belongs to — and a sync is what calls them. That
+   ran into a flat budget of thirty and lost: the first thirty writes landed,
+   the rest came back 429, and the Library tab counted them as failures. Writes
+   are batched now, so this ceiling is headroom rather than the fix, but a
+   limit tuned for one request per title was never right for a bulk import.
+*/
+const MAX_PER_WINDOW: Record<string, number> = {
+  login: 30,
+  datastoreGet: 120,
+  datastorePut: 120,
+};
+
 const hits = new Map<string, { count: number; resetAt: number }>();
 
-function rateLimited(key: string): boolean {
+function rateLimited(key: string, budget: number): boolean {
   const now = Date.now();
   const entry = hits.get(key);
 
@@ -59,7 +78,7 @@ function rateLimited(key: string): boolean {
   }
 
   entry.count += 1;
-  return entry.count > MAX_PER_WINDOW;
+  return entry.count > budget;
 }
 
 /** Stremio bodies are a method call with a few ids; anything larger is not ours. */
@@ -92,7 +111,7 @@ export async function POST(
     req.headers.get("x-real-ip") ||
     "unknown";
 
-  if (rateLimited(`${ip}:${method}`)) {
+  if (rateLimited(`${ip}:${method}`, MAX_PER_WINDOW[method] ?? 30)) {
     return Response.json(
       { error: { message: "Too many requests. Try again in a minute." } },
       { status: 429, headers: { "Retry-After": "60" } },

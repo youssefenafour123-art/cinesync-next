@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { fetchLibrarySnapshot, putSyncItem, type LibrarySnapshot } from "./stremio";
+import {
+  fetchLibrarySnapshot,
+  putSyncItems,
+  SYNC_BATCH,
+  type LibrarySnapshot,
+} from "./stremio";
 import { stremioAccounts, useSourcesStore } from "@/store/useSourcesStore";
 import { useAppStore } from "@/store/useAppStore";
 import type { HistoryEntry, SyncItem } from "./types";
@@ -28,8 +33,15 @@ const INITIAL: SyncState = {
   failed: 0,
 };
 
-/** Small pause between writes so Stremio doesn't rate-limit the batch. */
+/** Small pause between batches so Stremio doesn't rate-limit the run. */
 const THROTTLE_MS = 100;
+
+/** Splits a list into runs of at most `size`. */
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
 
 /**
  * Merges every connected IMDb CSV into every connected Stremio account.
@@ -127,35 +139,99 @@ export function useSync() {
     let skipped = 0;
     let failed = 0;
     const imported: HistoryEntry[] = [];
+    // One history entry per title, however many accounts it landed in.
+    const loggedIds = new Set<string>();
 
-    for (const item of items) {
+    /*
+       Accounts outside, titles inside — the reverse of how this read before.
+
+       It used to walk the titles and, for each, write to every account: one
+       request per title per account, a hundred milliseconds apart. Two hundred
+       titles was two hundred requests at ten a second, and the proxy in front
+       of api.strem.io allows thirty a minute per address per method, so the
+       first thirty were written and everything after them came back 429 and
+       was counted as a failure. That is what "most of my CSV failed" was.
+
+       `changes` takes an array, so a hundred titles now go in one request and
+       the same import is two of them. Batching only makes sense per account —
+       the payload carries no account, the authKey does — which is why the
+       loops swapped round.
+    */
+    for (const acc of accounts) {
       if (cancelRef.current) break;
 
-      setState((s) => ({ ...s, detail: `Syncing: ${item.title}` }));
-      let landedSomewhere = false;
+      const lib = existing.get(acc.authKey);
 
-      for (const acc of accounts) {
-        if (cancelRef.current) break;
-        done++;
-
-        const lib = existing.get(acc.authKey);
+      // Anything this account already knows is counted, not written. `known`
+      // holds rows the user deleted in Stremio too, which is the point: a sync
+      // must not resurrect them.
+      const fresh: SyncItem[] = [];
+      for (const item of items) {
         if (lib?.known.has(item.id)) {
           skipped++;
+          done++;
         } else {
-          try {
-            await putSyncItem(item, acc.authKey);
-            added++;
-            lib?.known.add(item.id);
-            lib?.inLibrary.add(item.id);
-            allKnown.add(item.id);
-            allInLibrary.add(item.id);
-            landedSomewhere = true;
-          } catch {
-            failed++;
+          fresh.push(item);
+        }
+      }
+      setState((s) => ({ ...s, percent: Math.round((done / total) * 100), skipped }));
+
+      for (const batch of chunk(fresh, SYNC_BATCH)) {
+        if (cancelRef.current) break;
+
+        setState((s) => ({
+          ...s,
+          detail:
+            batch.length === 1
+              ? `Syncing: ${batch[0].title}`
+              : `Syncing ${batch.length} titles, from ${batch[0].title}…`,
+        }));
+
+        /*
+           The batch, then its titles one at a time only if that is refused.
+
+           Same shape as `merge` in `systemList.ts`, for the same reason: one
+           row Stremio dislikes should cost one title, not the ninety-nine it
+           happened to travel with.
+        */
+        let landed = batch;
+        let attempted = batch.length;
+        try {
+          await putSyncItems(batch, acc.authKey);
+        } catch {
+          landed = [];
+          attempted = 0;
+          for (const item of batch) {
+            if (cancelRef.current) break;
+            attempted++;
+            try {
+              await putSyncItems([item], acc.authKey);
+              landed.push(item);
+            } catch {
+              failed++;
+            }
           }
-          await new Promise((r) => setTimeout(r, THROTTLE_MS));
         }
 
+        for (const item of landed) {
+          added++;
+          lib?.known.add(item.id);
+          lib?.inLibrary.add(item.id);
+          allKnown.add(item.id);
+          allInLibrary.add(item.id);
+
+          if (!loggedIds.has(item.id)) {
+            loggedIds.add(item.id);
+            imported.unshift({
+              id: item.id,
+              title: item.title,
+              type: item.type,
+              timestamp: Date.now(),
+            });
+          }
+        }
+
+        done += attempted;
         setState((s) => ({
           ...s,
           percent: Math.round((done / total) * 100),
@@ -163,15 +239,7 @@ export function useSync() {
           skipped,
           failed,
         }));
-      }
-
-      if (landedSomewhere) {
-        imported.unshift({
-          id: item.id,
-          title: item.title,
-          type: item.type,
-          timestamp: Date.now(),
-        });
+        await new Promise((r) => setTimeout(r, THROTTLE_MS));
       }
     }
 
