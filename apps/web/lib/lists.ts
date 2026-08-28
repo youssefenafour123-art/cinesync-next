@@ -1,6 +1,6 @@
 "use client";
 
-import type { MediaItem, MediaKind } from "./types";
+import type { MediaItem, MediaKind, SyncItem } from "./types";
 import { supabaseBrowser } from "./supabase/client";
 
 /**
@@ -76,6 +76,23 @@ export function toSavedTitle(item: MediaItem): SavedTitle {
     title: item.title,
     poster: item.poster,
   };
+}
+
+/**
+ * A title arriving from an IMDb import rather than from a screen in this app.
+ *
+ * An export carries an id, a name and a title type and nothing else, which is
+ * exactly `SavedTitle` minus the poster — and the poster is left off on
+ * purpose: `SavedTitleGrid` already falls back to metahub's poster for the id,
+ * so writing that URL onto two thousand rows would store a value that is
+ * derivable today and wrong the day metahub moves.
+ *
+ * Titles are clamped to the `list_items_title_length` check from 0007. A row
+ * over it is refused, and one refused row must not be able to take the batch
+ * it travelled in down with it.
+ */
+export function fromSyncItem(item: SyncItem): SavedTitle {
+  return { imdbId: item.id, kind: item.type, title: item.title.slice(0, 300) };
 }
 
 interface ListRow {

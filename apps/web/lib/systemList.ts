@@ -53,6 +53,17 @@ interface Copy {
   missing: string;
 }
 
+/**
+ * Rows per bulk insert, and the unit the retry below falls back from.
+ *
+ * The watch sync's first run is ninety-odd titles and fits in one request; an
+ * IMDb watchlist export is two thousand and does not — one upsert that size is
+ * a request big enough to be refused whole, and refusing it whole used to mean
+ * two thousand single-row retries. Chunking keeps the happy path to a handful
+ * of requests and keeps the cost of a bad row inside its own batch.
+ */
+const MERGE_CHUNK = 250;
+
 export function createSystemListStore(column: SystemListColumn, copy: Copy): SystemListStore {
   let listId: string | null = null;
   /*
@@ -186,14 +197,15 @@ export function createSystemListStore(column: SystemListColumn, copy: Copy): Sys
     /**
      * Adds titles this list does not already hold, and reports which.
      *
-     * For a source that speaks in whole lists rather than in one press —
-     * today that is the Stremio watch state feeding the Watched list, whose
-     * first run is ninety-odd titles.
+     * For a source that speaks in whole lists rather than in one press: the
+     * Stremio watch state feeding the Watched list, whose first run is
+     * ninety-odd titles, and an IMDb export feeding the Watchlist, which is
+     * as many titles as the person has ever saved.
      *
-     * One request for all of them, then one request each only if that is
+     * `MERGE_CHUNK` rows a request, then one request each only if a chunk is
      * refused. A single bad row — a title too long for the column, say — would
      * otherwise take the whole batch down with it, and the retry turns "the
-     * sync did nothing" into "the sync did everything except that one".
+     * import did nothing" into "the import did everything except that one".
      *
      * The caller gets back the ids that were actually written, so it can
      * remember what it has already sent and never send it again.
@@ -204,18 +216,21 @@ export function createSystemListStore(column: SystemListColumn, copy: Copy): Sys
       const missing = titles.filter((t) => t.imdbId && !saved.has(t.imdbId));
       if (missing.length === 0) return [];
 
-      let added: SavedTitle[] = [];
-      try {
-        await addManyToList(listId, missing);
-        added = missing;
-      } catch {
-        for (const title of missing) {
-          try {
-            await addToList(listId, title);
-            added.push(title);
-          } catch {
-            // One refused row is one title missing from a list, not a reason
-            // to abandon the rest of a sync.
+      const added: SavedTitle[] = [];
+      for (let i = 0; i < missing.length; i += MERGE_CHUNK) {
+        const batch = missing.slice(i, i + MERGE_CHUNK);
+        try {
+          await addManyToList(listId, batch);
+          added.push(...batch);
+        } catch {
+          for (const title of batch) {
+            try {
+              await addToList(listId, title);
+              added.push(title);
+            } catch {
+              // One refused row is one title missing from a list, not a reason
+              // to abandon the rest of a sync.
+            }
           }
         }
       }

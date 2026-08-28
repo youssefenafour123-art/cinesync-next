@@ -4,10 +4,13 @@ import { useRef, useState } from "react";
 import type { ImdbListPayload } from "@/app/api/imdb-list/route";
 import { login } from "@/lib/stremio";
 import { parseImdbCsv } from "@/lib/csv";
+import { fromSyncItem } from "@/lib/lists";
+import { useWatchlist } from "@/lib/useWatchlist";
 import { useSourcesStore } from "@/store/useSourcesStore";
 import { useAppStore } from "@/store/useAppStore";
 import { Icon } from "@/components/ui/Icon";
 import { ModalShell } from "./ModalShell";
+import type { SyncItem } from "@/lib/types";
 
 type Status = { tone: "ok" | "error"; message: string } | null;
 
@@ -17,6 +20,35 @@ export function AddSourceModal() {
   const addStremio = useSourcesStore((s) => s.addStremio);
   const addImdbList = useSourcesStore((s) => s.addImdbList);
   const addCsv = useSourcesStore((s) => s.addCsv);
+  /*
+     Importing an IMDb list used to do exactly one thing: keep it in
+     `localStorage` as something a later Start Sync could push into a connected
+     Stremio account. Nothing about it reached this account — so the Watchlist
+     at the top of the Library tab, which is a Supabase list and the only thing
+     on that page called a watchlist, stayed empty after uploading a two
+     hundred title export. `merge` closes that: the titles are in the list
+     before this modal shuts, and it skips the ones already there.
+  */
+  const { merge: saveToWatchlist, signedIn } = useWatchlist();
+
+  /**
+   * Puts an imported list into this account's watchlist, and says what it did.
+   *
+   * Signed out there is nothing to put it in, and saying so is better than the
+   * silence that made this look broken — the source is still added, and still
+   * syncs to Stremio.
+   */
+  const intoWatchlist = async (items: SyncItem[]): Promise<string> => {
+    if (!signedIn) return " Sign in to keep them in your CineSync watchlist too.";
+    try {
+      const added = await saveToWatchlist(items.map(fromSyncItem));
+      if (added.length === items.length) return " All of them are in your watchlist.";
+      if (added.length > 0) return ` ${added.length} added to your watchlist, the rest were already there.`;
+      return " They were already in your watchlist.";
+    } catch {
+      return " They couldn't be added to your watchlist — the sources list kept them.";
+    }
+  };
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -83,11 +115,19 @@ export function AddSourceModal() {
       const extra = data.truncated ? " (capped at 2000)" : "";
       setImdbStatus({
         tone: "ok",
-        message: `Imported ${data.items.length} titles from “${data.name}”${extra}.`,
+        message: `Imported ${data.items.length} titles from “${data.name}”${extra}. Saving…`,
+      });
+
+      const saved = await intoWatchlist(data.items);
+      setImdbStatus({
+        tone: "ok",
+        message: `Imported ${data.items.length} titles from “${data.name}”${extra}.${saved}`,
       });
       showToast(`Imported ${data.items.length} titles from ${data.name}.`);
       setListUrl("");
-      setTimeout(close, 1600);
+      // Long enough to read the second sentence, which is the one that says
+      // where the titles actually went.
+      setTimeout(close, 2400);
     } catch {
       setImdbStatus({ tone: "error", message: "Couldn't reach the server." });
     } finally {
@@ -108,9 +148,15 @@ export function AddSourceModal() {
         return;
       }
       addCsv(file.name, items);
-      setImdbStatus({ tone: "ok", message: `Parsed ${items.length} items from ${file.name}.` });
+      setImdbStatus({ tone: "ok", message: `Parsed ${items.length} items from ${file.name}. Saving…` });
+
+      const saved = await intoWatchlist(items);
+      setImdbStatus({
+        tone: "ok",
+        message: `Parsed ${items.length} items from ${file.name}.${saved}`,
+      });
       showToast(`Imported ${items.length} titles from ${file.name}.`);
-      setTimeout(close, 1500);
+      setTimeout(close, 2400);
     } catch {
       setImdbStatus({ tone: "error", message: "Couldn't read that file." });
     }
