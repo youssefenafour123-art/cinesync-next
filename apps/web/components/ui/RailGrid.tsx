@@ -25,6 +25,7 @@ export function RailGrid({
   rail,
   expandable = false,
   compact = false,
+  rotate = true,
 }: {
   rail: Rail;
   expandable?: boolean;
@@ -37,6 +38,16 @@ export function RailGrid({
    * itself changes — same cards, same order, same expand rules.
    */
   compact?: boolean;
+  /**
+   * Whether to show a rotating window of the pool rather than all of it.
+   *
+   * True for a shelf, whose pool is bigger than its shelf and where a
+   * different twelve each visit is the point. False for a list that is an
+   * *answer* — "More like Arrival" is ordered on purpose and grows by
+   * appending, so a window would drop the tail the moment Show more pushed it
+   * past `RAIL_SIZE` and reorder what was already on screen.
+   */
+  rotate?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -51,8 +62,8 @@ export function RailGrid({
   // A different window of the pool each visit — see `rotateWindow`. Keyed on
   // the rail title so the rails move independently rather than in step.
   const shown = useMemo(
-    () => rotateWindow(rail.items, RAIL_SIZE, rail.title),
-    [rail.items, rail.title],
+    () => (rotate ? rotateWindow(rail.items, RAIL_SIZE, rail.title) : rail.items),
+    [rotate, rail.items, rail.title],
   );
 
   /*

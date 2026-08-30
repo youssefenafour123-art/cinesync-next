@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { SimilarPayload } from "@/app/api/similar/route";
 import type { MediaItem, MediaKind } from "@/lib/types";
@@ -61,12 +62,59 @@ export function SimilarRail({
 
   const { data, loading, error, reload } = useFetch<SimilarPayload>(url);
 
+  /*
+     Everything Show more has fetched, kept beside the first slice rather than
+     replacing it — the route's slices are disjoint and each is ordered on its
+     own, so appending is all that is needed and nothing already read moves.
+  */
+  const [more, setMore] = useState<{ page: number; items: MediaItem[]; hasMore: boolean } | null>(
+    null,
+  );
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
+
+  const showMore = useCallback(async () => {
+    if (!url) return;
+    const next = (more?.page ?? 1) + 1;
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      const res = await fetch(`${url}&page=${next}`);
+      const payload = (await res.json()) as SimilarPayload & { error?: string };
+      if (!res.ok) throw new Error(payload.error ?? "Couldn't load more.");
+      setMore((prev) => ({
+        page: next,
+        items: [...(prev?.items ?? []), ...payload.items],
+        hasMore: payload.hasMore,
+      }));
+    } catch (err) {
+      setMoreError(err instanceof Error ? err.message : "Couldn't load more.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [more?.page, url]);
+
   // Nothing to ask about. A title with neither id is one that came from a
   // source we never matched, and there is no honest row to show for it.
   if (!url) return null;
 
   const name = data?.seed?.title || title;
-  const items = data?.items ?? [];
+
+  /*
+     Deduped as insurance, not as a fix. `recommendationsByTmdb` guarantees
+     disjoint slices, and this costs a set to make sure a repeat can never
+     reach React as two children with one key.
+  */
+  const seenKeys = new Set<string>();
+  const items = [...(data?.items ?? []), ...(more?.items ?? [])].filter((item) => {
+    if (seenKeys.has(item.key)) return false;
+    seenKeys.add(item.key);
+    return true;
+  });
+
+  // The most recent slice knows whether another exists; `data` only ever
+  // describes the first.
+  const hasMore = more ? more.hasMore : Boolean(data?.hasMore);
 
   if (error) return <ErrorState message={error} onRetry={reload} />;
 
@@ -87,17 +135,33 @@ export function SimilarRail({
     );
   }
 
-  return <SimilarResults name={name} items={items} variant={variant} />;
+  return (
+    <SimilarResults
+      name={name}
+      items={items}
+      variant={variant}
+      onShowMore={hasMore ? showMore : undefined}
+      loadingMore={loadingMore}
+      moreError={moreError}
+    />
+  );
 }
 
 function SimilarResults({
   name,
   items,
   variant,
+  onShowMore,
+  loadingMore,
+  moreError,
 }: {
   name: string;
   items: MediaItem[];
   variant: "page" | "panel";
+  /** Absent once the pool is out — see `hasMore`. */
+  onShowMore?: () => void;
+  loadingMore: boolean;
+  moreError: string | null;
 }) {
   /*
      Says what the row is, and when it is short, why.
@@ -133,12 +197,39 @@ function SimilarResults({
         transition={{ duration: 0.28, ease: "easeOut" }}
       >
         {/*
-           Not expandable. `/api/similar` returns at most ten and RailGrid's
-           window is twelve, so `rotateWindow` passes the list straight through
-           and the ranking survives — a rotating window would shuffle an answer
-           that was ordered on purpose.
+           Never windowed. This list is an answer, ordered on purpose and grown
+           by appending — a rotating window would drop the tail the moment Show
+           more pushed it past `RAIL_SIZE`, and reorder what was already read.
         */}
-        <RailGrid rail={{ title: heading, blurb, items }} compact={variant === "panel"} />
+        <RailGrid
+          rail={{ title: heading, blurb, items }}
+          compact={variant === "panel"}
+          rotate={false}
+        />
+
+        {/*
+           Ten more, read further down the same ranking rather than drawn from
+           a wider pool and re-sorted, so nothing already on screen moves.
+
+           Fetched on the press. The gate that decides who is eligible costs a
+           keyword lookup per candidate, and most people are answered by the
+           first ten.
+        */}
+        {onShowMore ? (
+          <div className="mt-6 flex flex-col items-center gap-3">
+            {moreError ? (
+              <p className="font-body-md text-[13px] text-error">{moreError}</p>
+            ) : null}
+            <button
+              type="button"
+              onClick={onShowMore}
+              disabled={loadingMore}
+              className="rounded-full border border-white/10 bg-surface-container/60 px-7 py-3 font-label-md text-label-md text-on-surface-variant transition-colors hover:border-primary/40 hover:text-on-surface disabled:opacity-60"
+            >
+              {loadingMore ? "Finding more…" : moreError ? "Try again" : "Show more"}
+            </button>
+          </div>
+        ) : null}
       </motion.div>
     </AnimatePresence>
   );

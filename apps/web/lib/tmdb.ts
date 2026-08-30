@@ -1196,7 +1196,10 @@ const isDistinctiveKeyword = (name: string) => {
   return !GENERIC_KEYWORDS.has(n) && !/^\d{4}s$/.test(n);
 };
 
-/** Candidates kept for enrichment. Twelve leaves slack above the ten returned. */
+/**
+ * Candidates kept for enrichment, per slice. Twelve leaves slack above the ten
+ * returned; asking for a second slice asks for twelve more.
+ */
 const REC_SHORTLIST = 12;
 /** Quality bar a neighbour must clear before it is worth recommending. */
 const REC_MIN_VOTES = 100;
@@ -1308,10 +1311,11 @@ async function keywordsFor(
 export async function recommendationsFor(
   imdbId: string,
   limit = 10,
-): Promise<{ seed: RecommendationSeed | null; items: MediaItem[] }> {
+  page = 1,
+): Promise<Recommendations> {
   const found = await findByImdbId(imdbId);
-  if (!found) return { seed: null, items: [] };
-  return recommendationsByTmdb(found.tmdbId, found.kind, limit, imdbId);
+  if (!found) return { seed: null, items: [], hasMore: false };
+  return recommendationsByTmdb(found.tmdbId, found.kind, limit, imdbId, page);
 }
 
 /**
@@ -1326,13 +1330,40 @@ export async function recommendationsFor(
  * does not, the seed's own detail request supplies it via `external_ids` at no
  * extra cost, because that request has to happen anyway for the genres.
  */
+/** What both recommendation entry points answer with. */
+interface Recommendations {
+  seed: RecommendationSeed | null;
+  items: MediaItem[];
+  /** Whether the pool held anything past this slice. */
+  hasMore: boolean;
+}
+
 export async function recommendationsByTmdb(
   tmdbId: number,
   kind: MediaKind,
   limit = 10,
   knownImdbId?: string,
-): Promise<{ seed: RecommendationSeed | null; items: MediaItem[] }> {
+  /**
+   * Which slice to answer with. 1-based.
+   *
+   * Slices are disjoint by construction rather than by re-sorting a wider
+   * pool and cutting it. The gate admits candidates in TMDB's own behavioural
+   * order, which is the primary signal, so slice two is simply the next twelve
+   * it admits; only *within* a slice does the weighted rating decide the
+   * order.
+   *
+   * The alternative — rank the whole pool each time and take a window — was
+   * tried and is wrong twice over. The pool's mean is the prior in
+   * `weightedRating`, so a bigger pool rescores everything: slices two and
+   * three came back sharing four titles, and a candidate from deep in the
+   * behavioural order could have jumped over the ten already on screen and
+   * reordered them mid-read.
+   */
+  page = 1,
+): Promise<Recommendations> {
   const endpoint = kind === "movie" ? "movie" : "tv";
+  /** The whole ranking down to the end of the requested slice. */
+  const wanted = REC_SHORTLIST * page;
 
   /*
      All three at once.
@@ -1348,12 +1379,8 @@ export async function recommendationsByTmdb(
       { append_to_response: "external_ids" },
       86400,
     ).catch(() => null),
-    tmdb<{ results?: TmdbListItem[] }>(`/${endpoint}/${tmdbId}/recommendations`, {}, 86400)
-      .then((d) => d.results ?? [])
-      .catch(() => [] as TmdbListItem[]),
-    tmdb<{ results?: TmdbListItem[] }>(`/${endpoint}/${tmdbId}/similar`, {}, 86400)
-      .then((d) => d.results ?? [])
-      .catch(() => [] as TmdbListItem[]),
+    listPages(`/${endpoint}/${tmdbId}/recommendations`, page),
+    listPages(`/${endpoint}/${tmdbId}/similar`, page),
   ]);
 
   const seed: RecommendationSeed = {
@@ -1382,7 +1409,7 @@ export async function recommendationsByTmdb(
   /** Appends whatever passes, in the order given, until the shortlist is full. */
   const gather = (list: TmdbListItem[], minShared: number, minDistinctive: number) => {
     for (const raw of list) {
-      if (shortlist.length >= REC_SHORTLIST) return;
+      if (shortlist.length >= wanted) return;
       if (!worthShowing(raw)) continue;
 
       const shared = (raw.genre_ids ?? []).filter((id) => seedGenres.has(id));
@@ -1417,12 +1444,12 @@ export async function recommendationsByTmdb(
           (raw.vote_count ?? 0) >= REC_MIN_VOTES_KEYWORD &&
           (raw.vote_average ?? 0) >= REC_MIN_RATING,
       )
-      .slice(0, KEYWORD_LOOKUPS);
+      .slice(0, KEYWORD_LOOKUPS * page);
 
     const keywords = await Promise.all(pool.map((raw) => keywordsFor(endpoint, raw.id)));
 
     pool.forEach((raw, i) => {
-      if (shortlist.length >= REC_SHORTLIST) return;
+      if (shortlist.length >= wanted) return;
       const shares = keywords[i].some((k) => seedKeywords.has(k.id));
       if (!shares) return;
       seen.add(raw.id);
@@ -1459,7 +1486,7 @@ export async function recommendationsByTmdb(
     gather(recommended, 0, 0);
   }
 
-  if (!shortlist.length) return { seed, items: [] };
+  if (!shortlist.length) return { seed, items: [], hasMore: false };
 
   /*
      The shortlist used to go through `enrich`, which is a fat TMDB detail
@@ -1482,8 +1509,15 @@ export async function recommendationsByTmdb(
      already established as similar, which of two closely-agreeing scores
      ranks them is a far smaller thing than the wait was.
   */
+  /*
+     Only this slice's own candidates. Everything before it has already been
+     answered with, and everything after it is the next press's business.
+  */
+  const slice = shortlist.slice((page - 1) * REC_SHORTLIST);
+  if (!slice.length) return { seed, items: [], hasMore: false };
+
   const enriched = await Promise.all(
-    shortlist.map(async (raw) => {
+    slice.map(async (raw) => {
       const item = baseItem(raw, kind);
       const ids = await tmdb<{ imdb_id?: string }>(
         `/${endpoint}/${raw.id}/external_ids`,
@@ -1505,22 +1539,49 @@ export async function recommendationsByTmdb(
     enriched.reduce((sum, item) => sum + (parseFloat(item.rating ?? "0") || 0), 0) /
     enriched.length;
 
+  const ranked = enriched
+    .map((item) => ({
+      item,
+      score: weightedRating(
+        parseFloat(item.rating ?? "0") || 0,
+        item.voteCount ?? 0,
+        mean,
+        300,
+      ),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .map((r) => r.item);
+
   return {
     seed,
-    items: enriched
-      .map((item) => ({
-        item,
-        score: weightedRating(
-          parseFloat(item.rating ?? "0") || 0,
-          item.voteCount ?? 0,
-          mean,
-          300,
-        ),
-      }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit)
-      .map((r) => r.item),
+    items: ranked.slice(0, limit),
+    /*
+       The gate stopped because it hit the cap, not because it ran out — so
+       there is plausibly another slice behind this one. Falling short means
+       the pool ran dry, which ends the row whatever the caller's cap says:
+       TMDB's neighbourhood around an obscure title is genuinely small, and
+       offering to show more of nothing is worse than not offering.
+    */
+    hasMore: shortlist.length >= wanted,
   };
+}
+
+/**
+ * One of TMDB's own ranked lists, as far down as a slice needs to reach.
+ *
+ * Pages are 20 long and in the behavioural order the gate relies on, so they
+ * are concatenated rather than merged or re-sorted. Only fetched as deep as
+ * asked: a viewer who never presses Show more never pays for page two.
+ */
+async function listPages(path: string, pages: number): Promise<TmdbListItem[]> {
+  const answers = await Promise.all(
+    Array.from({ length: pages }, (_, i) =>
+      tmdb<{ results?: TmdbListItem[] }>(path, { page: String(i + 1) }, 86400)
+        .then((d) => d.results ?? [])
+        .catch(() => [] as TmdbListItem[]),
+    ),
+  );
+  return answers.flat();
 }
 
 /** Full enrichment for a known TMDB id — used by the details modal. */

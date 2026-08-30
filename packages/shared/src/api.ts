@@ -56,7 +56,8 @@ export const endpoints = {
   meta: (type: string, id: string) =>
     apiUrl(`/api/meta/${encodeURIComponent(type)}/${encodeURIComponent(id)}`),
   /** "More like this", from the IMDb id of something already watched. */
-  similar: (imdb: string) => apiUrl("/api/similar", { imdb }),
+  similar: (imdb: string, page = 1) =>
+    apiUrl("/api/similar", { imdb, page: page > 1 ? page : undefined }),
   /** One genre's best titles, from the name printed on a title's genre chip. */
   genre: (name: string, kind: "movie" | "series", page = 1) =>
     apiUrl("/api/genre", { name, kind, page: page > 1 ? page : undefined }),

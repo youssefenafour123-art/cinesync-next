@@ -5,6 +5,16 @@ import type { SimilarPayload } from "@cinesync/shared/payloads";
 export const revalidate = 86400;
 
 /**
+ * How far Show more will go: thirty recommendations, two presses.
+ *
+ * A bound rather than a feed, for the reason `/api/mood` documents about free
+ * paging and cache keys, and because the thirty-first title TMDB's audience
+ * data offers for a film has stopped being a recommendation. Most seeds never
+ * reach it anyway — the gate runs out first, and `hasMore` says so.
+ */
+const MAX_PAGE = 3;
+
+/**
  * Declared in `packages/shared/src/payloads.ts` and re-exported here so the
  * existing `@/app/api/.../route` imports keep working. The Expo app reads it
  * from the shared package instead — it cannot import this module, which pulls
@@ -36,6 +46,9 @@ export async function GET(req: Request) {
      trip whose entire purpose was to be undone by `findByImdbId`.
   */
   const byTmdb = /^\d+$/.test(tmdb) && (kind === "movie" || kind === "series");
+  // Clamped rather than rejected: a page past the end is a client that has
+  // lost count, and the last slice is a better answer than a 400.
+  const page = Math.min(Math.max(Number(params.get("page")) || 1, 1), MAX_PAGE);
 
   if (!byTmdb && !/^tt\d+$/.test(imdb)) {
     return Response.json(
@@ -45,13 +58,16 @@ export async function GET(req: Request) {
   }
 
   try {
-    const { seed, items } = byTmdb
-      ? await recommendationsByTmdb(Number(tmdb), kind as "movie" | "series")
-      : await recommendationsFor(imdb);
+    const { seed, items, hasMore } = byTmdb
+      ? await recommendationsByTmdb(Number(tmdb), kind as "movie" | "series", 10, undefined, page)
+      : await recommendationsFor(imdb, 10, page);
     // A seed TMDB has never heard of is an empty rail, not a failure: the
     // client renders nothing and the viewer is never told about an id they
     // did not type.
-    return Response.json({ seed, items } satisfies SimilarPayload, { headers: CATALOGUE_CACHE });
+    return Response.json(
+      { seed, items, page, hasMore: hasMore && page < MAX_PAGE } satisfies SimilarPayload,
+      { headers: CATALOGUE_CACHE },
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Couldn't find anything similar";
     return Response.json({ error: message }, { status: 502 });

@@ -135,6 +135,16 @@ export interface SimilarPayload {
    * here — the library lives in the browser.
    */
   items: MediaItem[];
+  /** Which slice of the ranking this is. 1-based; the client appends the rest. */
+  page: number;
+  /**
+   * Whether the pool held anything past this slice.
+   *
+   * False ends the row whatever the caller's cap says: TMDB's neighbourhood
+   * around an obscure title is genuinely small, and offering to show more of
+   * nothing is worse than not offering.
+   */
+  hasMore: boolean;
 }
 
 /** `GET /api/genre?name=Thriller&kind=movie` */
