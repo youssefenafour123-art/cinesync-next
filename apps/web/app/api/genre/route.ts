@@ -178,6 +178,18 @@ export async function GET(req: Request) {
 
   const other: MediaKind = asked === "movie" ? "series" : "movie";
 
+  /*
+     Where the time went, in the response.
+
+     This route is the one whose cost is the point — it went from fourteen
+     seconds to a tenth of one by moving where the caching happened, and the
+     only way that was ever visible was by asking the deployment rather than
+     this laptop. `vocab` is the two genre lists, `slice` is the build behind
+     `unstable_cache`, and a `slice` near zero means it was a cache hit.
+  */
+  const started = Date.now();
+  let vocabMs = 0;
+
   try {
     // Both vocabularies, because the answer has to know whether this genre
     // exists on the other side either way. Two cached requests, run together.
@@ -186,6 +198,7 @@ export async function GET(req: Request) {
       genreCatalogue(other),
     ]);
 
+    vocabMs = Date.now() - started;
     const own = resolve(name, asked, ownList);
     const across = resolve(name, other, otherList);
 
@@ -210,7 +223,9 @@ export async function GET(req: Request) {
     const genre = (own ?? across)!;
     const twin = own ? across : undefined;
 
+    const sliceStarted = Date.now();
     const items = await slice(kind, genre.id, genre.name, page);
+    const sliceMs = Date.now() - sliceStarted;
 
     return Response.json(
       {
@@ -222,7 +237,12 @@ export async function GET(req: Request) {
         // the end of the genre whatever `MAX_PAGE` says.
         hasMore: page < MAX_PAGE && items.length === LIMIT,
       } satisfies GenrePayload,
-      { headers: CATALOGUE_CACHE },
+      {
+        headers: {
+          ...CATALOGUE_CACHE,
+          "Server-Timing": `vocab;dur=${vocabMs}, slice;dur=${sliceMs}`,
+        },
+      },
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load that genre";
