@@ -53,3 +53,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 expo-env.d.ts
+
+# Claude Code, per-machine. `settings.local.json` holds hook commands with
+# absolute paths off this laptop; the shared settings file, if one is ever
+# added, is `.claude/settings.json` and is deliberately not ignored.
+.claude/settings.local.json
