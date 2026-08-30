@@ -14,6 +14,15 @@ import { Icon } from "./Icon";
 const ADVANCE_MS = 8000;
 
 /**
+ * Genre chips a banner carries.
+ *
+ * TMDB files some titles under six. A banner is not a genre list, and its own
+ * ordering puts what the title is actually about first — see `leadGenre` in
+ * lib/tmdb.ts for the same reasoning applied to a whole rail.
+ */
+const HERO_GENRES = 3;
+
+/**
  * How long the first slide waits for its artwork before giving up on it.
  *
  * The banner is 70vh, so its backdrop is the largest paint on the landing tab,
@@ -76,6 +85,7 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
   // Whether the opening slide's backdrop is up. See `FIRST_SLIDE_GRACE_MS`.
   const [opened, setOpened] = useState(false);
   const openDetails = useAppStore((s) => s.openDetails);
+  const openGenre = useAppStore((s) => s.openGenre);
   const inLibrary = useAppStore((s) => s.libraryIds);
   const { play } = useTrailer();
   const { add, adding } = useLibraryActions();
@@ -248,6 +258,31 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
                     In Library
                   </span>
                 ) : null}
+
+                {/*
+                   The genres, and pressing one opens it.
+
+                   In this row rather than under the synopsis because that is
+                   where the rest of what-is-this lives — the kind, the year,
+                   the score — and because the row is one child of
+                   `.hero-content`, so adding a line below would have to be
+                   fitted into the staggered rise the CSS drives by nth-child.
+
+                   Three at most. TMDB gives some titles six, and a banner is
+                   not a genre list; the first three are the ones its own
+                   ordering says the title is actually about.
+                */}
+                {(item.genres ?? []).slice(0, HERO_GENRES).map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => openGenre(g, item.kind)}
+                    title={`Browse ${g}`}
+                    className="rounded-full border border-primary/25 bg-primary/10 px-3 py-1 font-label-md text-label-md text-primary backdrop-blur-md transition-colors hover:border-primary/50 hover:bg-primary/20"
+                  >
+                    {g}
+                  </button>
+                ))}
               </div>
             </CopyLine>
 

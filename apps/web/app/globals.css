@@ -1248,6 +1248,35 @@ body {
   color: rgba(255, 255, 255, 0.9);
 }
 
+/*
+   A genre in the meta row, which you can press.
+
+   Its own selector because `.hero-meta span` only dresses spans, and this has
+   to be a button to be operable by keyboard. Tinted rather than neutral so the
+   row still reads as three facts and then some links, and declared here rather
+   than as utilities because this component is styled by these classes — an
+   unlayered rule in this file wins over a Tailwind utility on the same element
+   anyway.
+*/
+.hero-genre {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(78, 222, 163, 0.1);
+  border: 1px solid rgba(78, 222, 163, 0.25);
+  color: var(--color-primary);
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.hero-genre:hover {
+  background: rgba(78, 222, 163, 0.2);
+  border-color: rgba(78, 222, 163, 0.5);
+}
+
 .hero-desc {
   font-size: 0.9rem;
   line-height: 1.6;

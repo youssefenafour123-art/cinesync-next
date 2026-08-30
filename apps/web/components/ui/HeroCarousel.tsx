@@ -10,6 +10,9 @@ import { releaseLabel } from "@/lib/release";
 
 const AUTO_ADVANCE_MS = 10_000;
 
+/** Genre chips a banner carries — see the note in `HeroSlider`. */
+const HERO_GENRES = 3;
+
 /**
  * Full-bleed hero with a muted autoplaying trailer per slide.
  *
@@ -20,6 +23,7 @@ const AUTO_ADVANCE_MS = 10_000;
 export function HeroCarousel({ items }: { items: MediaItem[] }) {
   const [index, setIndex] = useState(0);
   const openDetails = useAppStore((s) => s.openDetails);
+  const openGenre = useAppStore((s) => s.openGenre);
   const { play } = useTrailer();
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -82,6 +86,24 @@ export function HeroCarousel({ items }: { items: MediaItem[] }) {
                 {item.rating ? <span>★ {item.rating}</span> : null}
                 <span>{releaseLabel(item)}</span>
                 <span>{item.kind === "series" ? "TV" : "MOVIE"}</span>
+                {/*
+                   In the meta row, not on a line of their own: `.hero-content`
+                   staggers its direct children by nth-child, and a fifth one
+                   would rise with no delay while the four above it kept theirs.
+                   Three at most — this banner is 30% opacity behind a title and
+                   a synopsis, and six chips would be the loudest thing on it.
+                */}
+                {(item.genres ?? []).slice(0, HERO_GENRES).map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    className="hero-genre"
+                    title={`Browse ${g}`}
+                    onClick={() => openGenre(g, item.kind)}
+                  >
+                    {g}
+                  </button>
+                ))}
               </div>
               <div className="hero-desc">
                 {item.director ? (

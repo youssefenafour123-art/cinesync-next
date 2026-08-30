@@ -11,6 +11,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import type { MediaItem } from "@cinesync/shared/types";
 import { Icon } from "./Icon";
 import { useOpenTitle } from "@/lib/useOpenTitle";
@@ -18,6 +19,14 @@ import { PRIMARY } from "@/lib/theme";
 
 /** How long each slide holds. Same value as the web's `ADVANCE_MS`. */
 const ADVANCE_MS = 8000;
+/**
+ * Genre chips a banner carries — the web's `HERO_GENRES`, same reasoning.
+ *
+ * Two rather than three here. The web row has a viewport's width to spend and
+ * this one is a phone: a third chip wraps the line under the rating and pushes
+ * the title down over the artwork.
+ */
+const HERO_GENRES = 2;
 /** Framer's `staggerChildren: 0.07` / `delayChildren: 0.12`, in ms. */
 const COPY_STAGGER = 70;
 const COPY_DELAY = 120;
@@ -43,6 +52,7 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
   const [direction, setDirection] = useState(1);
   const [running, setRunning] = useState(true);
   const openTitle = useOpenTitle();
+  const router = useRouter();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const height = Math.max(460, width * 1.15);
@@ -113,6 +123,25 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
             <Text className="font-body text-label-md uppercase text-on-surface-variant">
               {[item.year, item.kind === "series" ? "Series" : "Film"].filter(Boolean).join(" · ")}
             </Text>
+
+            {/* Pressing one opens that genre. In this row rather than on a line
+                of its own because that is where the rest of what-is-this lives,
+                and because the copy above the title is staggered by index — a
+                fifth line would need its own place in that sequence. */}
+            {(item.genres ?? []).slice(0, HERO_GENRES).map((g) => (
+              <Pressable
+                key={g}
+                onPress={() =>
+                  router.push({ pathname: "/genre/[name]", params: { name: g, kind: item.kind } })
+                }
+                accessibilityRole="button"
+                accessibilityLabel={`Browse ${g}`}
+                hitSlop={6}
+                className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 active:opacity-70"
+              >
+                <Text className="font-body-semibold text-[12px] text-primary">{g}</Text>
+              </Pressable>
+            ))}
           </View>
         </CopyLine>
 
