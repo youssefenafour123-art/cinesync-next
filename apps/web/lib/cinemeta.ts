@@ -178,21 +178,26 @@ export function runtimeMinutes(raw?: string): number | undefined {
  * How long one request in a bulk build may take before it is abandoned.
  *
  * A rail is ~35 requests behind one `Promise.all`, so the slowest of them
- * decides when the page appears. Measured against TMDB and Cinemeta the median
- * is about 25 ms and the worst of thirty-two about 200 ms — but a single
- * straggler was turning a 0.2 second build into a five second one, and it was
- * a different genre every time.
+ * decides when the page appears — a single straggler was turning a 0.2 second
+ * build into a five second one, and it was a different genre every time.
+ *
+ * Set against the median rather than against patience. TMDB and Cinemeta both
+ * answer in about 25 ms and the slowest of thirty-two in about 200; this is
+ * roughly fifty times the median, so anything it cuts off was never going to
+ * arrive in a useful time. The first attempt at this was 2500 ms, which was
+ * long enough that `Server-Timing` on the deployment still showed whole slices
+ * pricing at 3 seconds — the leash, not the request, was the wait. `enrich`
+ * makes two of these in sequence, so the worst a title can cost is twice this.
  *
  * Nothing is lost when it fires. `enrich` keeps the list item it started with,
  * so an abandoned detail request costs the community poster and the US release
- * day, and an abandoned rating lookup leaves TMDB's own average in place. A
- * title with slightly thinner data beats a page that takes five seconds to
- * admit it was waiting on one request.
+ * day, and an abandoned rating lookup leaves TMDB's own average in place — the
+ * field the IMDb rating exists to improve on, not one that goes missing.
  *
  * Declared here rather than in lib/tmdb.ts because that module imports this
  * one, and a constant both need has to travel in that direction.
  */
-export const BULK_TIMEOUT_MS = 2500;
+export const BULK_TIMEOUT_MS = 1200;
 
 export async function fetchRuntimeMinutes(
   kind: MediaKind,
