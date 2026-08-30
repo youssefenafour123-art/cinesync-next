@@ -13,6 +13,26 @@ interface PosterImageProps {
   variants?: string[];
   alt: string;
   className?: string;
+  /**
+   * This image is the page's largest paint — load it now, ahead of the rest.
+   *
+   * Everything here is `loading="lazy"`, which is right for a rail of a dozen
+   * posters and wrong for the one image the hero is built around: the browser
+   * defers a lazy image until layout has told it the element is in view, and
+   * by then it is queued behind however many posters were discovered first.
+   * Measured on a throttled connection against production, the hero backdrop
+   * was the LCP element and arrived at **18.3 seconds**.
+   *
+   * `fetchpriority="high"` is the other half. Eager alone only moves the
+   * request earlier in the queue; the hint moves it to the front of it.
+   */
+  priority?: boolean;
+  /**
+   * Fired once the image is up, or once it has failed and the placeholder is
+   * standing in for it. The hero uses it to hold its first advance until there
+   * is something to look at.
+   */
+  onReady?: () => void;
 }
 
 /**
@@ -21,7 +41,14 @@ interface PosterImageProps {
  * which frequently 404'd too. This falls back to a rendered placeholder that
  * can never fail.
  */
-export function PosterImage({ src, variants, alt, className = "" }: PosterImageProps) {
+export function PosterImage({
+  src,
+  variants,
+  alt,
+  className = "",
+  priority = false,
+  onReady,
+}: PosterImageProps) {
   const [failed, setFailed] = useState(false);
   const chosen = useMemo(() => sizedPoster(posterVariant(src, variants)), [src, variants]);
 
@@ -48,12 +75,19 @@ export function PosterImage({ src, variants, alt, className = "" }: PosterImageP
       key={chosen}
       src={chosen}
       alt={alt}
-      loading="lazy"
+      loading={priority ? "eager" : "lazy"}
+      fetchPriority={priority ? "high" : "auto"}
       // Off the main thread. Without it the browser decodes synchronously
       // during layout, and a rail commits a dozen of these at once.
       decoding="async"
       className={className}
-      onError={() => setFailed(true)}
+      onLoad={onReady}
+      onError={() => {
+        setFailed(true);
+        // A dead poster still counts as settled — whatever is waiting on this
+        // must not wait on an image that is never coming.
+        onReady?.();
+      }}
     />
   );
 }

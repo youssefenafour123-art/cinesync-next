@@ -13,6 +13,25 @@ import { Icon } from "./Icon";
 
 const ADVANCE_MS = 8000;
 
+/**
+ * How long the first slide waits for its artwork before giving up on it.
+ *
+ * The banner is 70vh, so its backdrop is the largest paint on the landing tab,
+ * and the slider used to start its clock the moment it mounted — which on a
+ * slow connection meant advancing past a slide whose artwork had not arrived,
+ * to another that then had to be fetched too. Measured on a throttled
+ * connection the hero was still pulling a fresh backdrop twenty seconds in,
+ * each new one resetting the largest paint, because the visitor was never
+ * shown one long enough for it to finish.
+ *
+ * Holding only the *first* advance is the whole change: the opening slide gets
+ * the connection to itself and settles, and every advance after it behaves
+ * exactly as it did. The cap is here because artwork that never loads must not
+ * park the slider forever — a title with no usable backdrop renders the
+ * placeholder and the clock starts anyway.
+ */
+const FIRST_SLIDE_GRACE_MS = 6000;
+
 /** Copy blocks animate in one after another rather than as a single lump. */
 const COPY_STAGGER = {
   hidden: {},
@@ -54,6 +73,8 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
   // outgoing and incoming slides travel.
   const [direction, setDirection] = useState(1);
   const [paused, setPaused] = useState(false);
+  // Whether the opening slide's backdrop is up. See `FIRST_SLIDE_GRACE_MS`.
+  const [opened, setOpened] = useState(false);
   const openDetails = useAppStore((s) => s.openDetails);
   const inLibrary = useAppStore((s) => s.libraryIds);
   const { play } = useTrailer();
@@ -79,13 +100,19 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
   );
 
   useEffect(() => {
-    if (count < 2 || paused) return;
+    if (opened) return;
+    const t = setTimeout(() => setOpened(true), FIRST_SLIDE_GRACE_MS);
+    return () => clearTimeout(t);
+  }, [opened]);
+
+  useEffect(() => {
+    if (count < 2 || paused || !opened) return;
     const t = setInterval(() => {
       setDirection(1);
       setIndex((i) => (i + 1) % count);
     }, ADVANCE_MS);
     return () => clearInterval(t);
-  }, [count, paused, index]);
+  }, [count, paused, index, opened]);
 
   if (!count) {
     return (
@@ -155,9 +182,16 @@ export function HeroSlider({ items }: { items: MediaItem[] }) {
               carry the text contrast, so the artwork can afford to be brighter
               than it was when it was doubling as a scrim.
             */}
+            {/*
+              Only one slide is mounted at a time, so this is always the image
+              the visitor is looking at — and on the landing tab it is the
+              largest paint on the page.
+            */}
             <PosterImage
               src={heroBackdrop(item.backdrop, item.poster)}
               alt=""
+              priority
+              onReady={() => setOpened(true)}
               className="h-full w-full object-cover opacity-80"
             />
           </motion.div>

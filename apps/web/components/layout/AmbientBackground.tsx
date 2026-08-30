@@ -24,6 +24,16 @@ const COLUMNS = 12;
  */
 const PER_COLUMN = 8;
 
+/**
+ * Longest the wall waits for the page to go quiet before it loads anyway.
+ *
+ * The ceiling on `requestIdleCallback`, and the whole delay on Safari, which
+ * has no such callback. Long enough that a slow connection finishes the hero
+ * backdrop first — the reason the wall defers at all, see below — and short
+ * enough that a tab which never goes idle still gets its background.
+ */
+const WALL_DELAY_MS = 2500;
+
 /** How far from a column the pointer still lifts it, as a share of the viewport. */
 const PROXIMITY_REACH = 0.34;
 /** Column opacity with the pointer nowhere near it. */
@@ -86,6 +96,50 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
     return () => mq.removeEventListener("change", sync);
   }, []);
 
+  /*
+     The wall waits for the page to go quiet.
+
+     `loading="lazy"` does nothing for it. The wall is fixed to the viewport,
+     so every one of its 192 tiles is "in view" the instant it mounts and all
+     192 are requested at once — measured on a throttled connection they were
+     still arriving twenty-three seconds in, and the hero's own backdrop, the
+     largest paint on the page, took sixteen seconds to download because it was
+     sharing the link with them. `fetchpriority="low"` fixed the ordering but
+     not the contention: once every request is in flight they all share the
+     bandwidth regardless of what order they were queued in.
+
+     So it is not queued at all until the page has settled. This is decoration
+     at 34% opacity behind a scrim; nobody is waiting for it, and the same
+     reasoning already governs `useTabPrefetch`, which holds its catalogue
+     sweep for idle for exactly this reason.
+
+     `requestIdleCallback` with a timeout rather than a bare `setTimeout`, so a
+     fast connection gets the wall almost immediately and a slow one gets the
+     content first. Safari has no `requestIdleCallback`, hence the fallback.
+  */
+  const [settled, setSettled] = useState(false);
+
+  useEffect(() => {
+    const idle = (
+      window as Window & {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      }
+    ).requestIdleCallback;
+
+    if (!idle) {
+      const t = setTimeout(() => setSettled(true), WALL_DELAY_MS);
+      return () => clearTimeout(t);
+    }
+
+    let cancelled = false;
+    idle(() => {
+      if (!cancelled) setSettled(true);
+    }, { timeout: WALL_DELAY_MS });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Own copy of the poster pool, for when this mounts on a tab that never
   // calls `onWall`. The prop wins the moment it arrives — it's the same
   // payload, and preferring it avoids swapping the whole wall out underneath a
@@ -135,7 +189,7 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
      The aurora orbs stay. They are three gradients on the compositor, they
      cost nothing, and they are what the backdrop reads as at this size anyway.
   */
-  const columnCount = narrow ? 0 : COLUMNS;
+  const columnCount = narrow || !settled ? 0 : COLUMNS;
 
   // Fixed-size grid, so the layout never depends on how many posters arrived.
   const columns = useMemo(() => {
@@ -428,6 +482,20 @@ export function AmbientBackground({ wall }: AmbientBackgroundProps) {
                       src={backdropPoster(src)}
                       alt=""
                       loading="lazy"
+                      /*
+                         Eighty tiles at 34% opacity under a scrim, and `lazy`
+                         does nothing for them: the wall is fixed to the
+                         viewport, so every one is "in view" the moment it
+                         mounts and all eighty go out at once. Measured on a
+                         throttled connection they filled the queue for nine
+                         seconds and the hero's own backdrop — the largest
+                         paint on the page — started behind them.
+
+                         `low` is the whole fix. The tiles still load, they
+                         just stop outranking the artwork the visitor came to
+                         look at.
+                      */
+                      fetchPriority="low"
                       decoding="async"
                     />
                   ))}

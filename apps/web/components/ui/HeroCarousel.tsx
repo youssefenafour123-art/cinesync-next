@@ -6,6 +6,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { useTrailer } from "@/lib/useTrailer";
 import { PosterImage } from "./PosterImage";
 import { heroBackdrop } from "@/lib/rotation";
+import { releaseLabel } from "@/lib/release";
 
 const AUTO_ADVANCE_MS = 10_000;
 
@@ -52,9 +53,15 @@ export function HeroCarousel({ items }: { items: MediaItem[] }) {
         return (
           <div key={item.key} className={`hero-slide${active ? " active" : ""}`} aria-hidden={!active}>
             <div className="hero-video-wrapper">
+              {/*
+                Every slide stays mounted here, so only the first one is the
+                paint anybody is waiting on — the other four keep the lazy
+                default rather than five backdrops racing each other.
+              */}
               <PosterImage
                 src={heroBackdrop(item.backdrop, item.poster)}
                 alt=""
+                priority={i === 0}
                 className="absolute inset-0 h-full w-full object-cover opacity-60"
               />
               {item.trailerKey ? (
@@ -73,7 +80,7 @@ export function HeroCarousel({ items }: { items: MediaItem[] }) {
               <div className="hero-title">{item.title}</div>
               <div className="hero-meta">
                 {item.rating ? <span>★ {item.rating}</span> : null}
-                <span>{item.releaseDate ?? item.year ?? "TBA"}</span>
+                <span>{releaseLabel(item)}</span>
                 <span>{item.kind === "series" ? "TV" : "MOVIE"}</span>
               </div>
               <div className="hero-desc">

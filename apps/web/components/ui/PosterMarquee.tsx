@@ -88,6 +88,8 @@ export function PosterMarquee({ className = "" }: { className?: string }) {
                 src={backdropPoster(src)}
                 alt=""
                 loading="lazy"
+                // Decoration behind the auth panel, like the backdrop wall.
+                fetchPriority="low"
                 decoding="async"
               />
             ))}
