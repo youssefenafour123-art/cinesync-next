@@ -88,6 +88,24 @@ export async function GET(req: Request) {
     */
     seasonCount: tmdb?.seasonCount ?? cinemeta?.seasonCount,
     episodeCount: tmdb?.episodeCount ?? cinemeta?.episodeCount,
+    /*
+       The release, TMDB first, because only TMDB knows the American record.
+
+       Cinemeta carries a `year` and nothing else — no day, and no way to tell
+       an announced date from a placeholder — and the spread above puts it
+       second, so its year quietly overwrote TMDB's. The two do not agree.
+       TMDB's is the US release worked out by `usReleaseDate`; Cinemeta's
+       `releaseInfo` is the wide opening, so Her came back as **2014** with
+       "Dec 18, 2013" beside it and Schindler's List as **1994** dated
+       December 1993. A year and a date that contradict each other, in the one
+       panel that is supposed to settle the question.
+
+       Cinemeta still answers for a title TMDB cannot match at all.
+    */
+    year: tmdb?.year ?? cinemeta?.year,
+    releaseDate: tmdb?.releaseDate ?? cinemeta?.releaseDate,
+    releaseIso: tmdb?.releaseIso ?? cinemeta?.releaseIso,
+    releaseConfirmed: tmdb?.releaseConfirmed ?? cinemeta?.releaseConfirmed,
     tmdbId: tmdbId ?? undefined,
     imdbId: imdbId ?? tmdb?.imdbId ?? cinemeta?.imdbId,
     trailerKey: cinemeta?.trailerKey ?? tmdb?.trailerKey,

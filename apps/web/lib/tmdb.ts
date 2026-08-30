@@ -126,7 +126,9 @@ export function isoDate(offsetMonths = 0): string {
  *
  * Types are ranked rather than taken first-found, because a country can list
  * several. Theatrical is the release; a limited run is the next best answer; a
- * digital date is the real one for a film that never sees a cinema.
+ * digital date is the real one for a film that never sees a cinema. That
+ * ranking has one exception, `PLATFORM_LEAD_DAYS` below, for the film whose
+ * limited run *is* the release.
  *
  * Festival premieres (type 1) are discarded outright rather than ranked last.
  * Ranking was not enough: a film whose *only* American entry is a premiere
@@ -141,6 +143,37 @@ export function isoDate(offsetMonths = 0): string {
 const US_RELEASE_PREFERENCE = [3, 2, 4, 6, 5];
 /** TMDB release type 1. A screening, not a release. */
 const PREMIERE = 1;
+/** TMDB release type 2. A limited opening — a handful of cities. */
+const LIMITED = 2;
+/** TMDB release type 3. The wide opening. */
+const THEATRICAL = 3;
+
+/**
+ * How far a limited opening must lead the wide one to be the release itself.
+ *
+ * Ranking Theatrical strictly above Limited dated a whole class of film a year
+ * late. An awards contender opens in a few cities in December and expands in
+ * January, and both dates are American and both are real, so neither the
+ * re-release window nor the premiere filter touched them: Her was printed as
+ * **2014**, The Revenant as **2016**, 1917 as **2020**, Schindler's List as
+ * **1994**, Good Will Hunting as **1998**. Wikidata's American publication
+ * date for all five is the December one, and so is the year every reference
+ * gives them.
+ *
+ * Taking the earlier of the two outright is not the fix either, because a
+ * studio also files paid previews as Limited: Dune: Part Three carries a US
+ * entry three days before it opens, noted "Insider Screenings", and
+ * Interstellar and GoodFellas each carry one two days early. Merging the types
+ * would have printed those instead — the same wrong-by-a-few-days answer the
+ * per-country ranking exists to prevent.
+ *
+ * A week is where the two separate cleanly. Measured over 680 films, every US
+ * limited entry within six days of the wide date was a sneak or a press
+ * screening, and every one at seven days or more was a platform release the
+ * film is dated by — La La Land at seven, Dead Poets Society at seven,
+ * Fantastic Mr. Fox at twelve, and the awards run from a fortnight out.
+ */
+const PLATFORM_LEAD_DAYS = 7;
 
 /**
  * How long after its first American date a film is still having the same
@@ -209,9 +242,19 @@ function usReleaseDate(
     return !Number.isFinite(gap) || gap <= RELEASE_RUN_DAYS;
   });
 
+  const earliestOfType = (type: number): string | undefined =>
+    run.filter((r) => r.type === type).sort((a, b) => a.date.localeCompare(b.date))[0]?.date;
+
+  const theatrical = earliestOfType(THEATRICAL);
+  if (theatrical) {
+    const limited = earliestOfType(LIMITED);
+    const lead = limited ? dayGap(theatrical, limited) : Number.NaN;
+    return Number.isFinite(lead) && lead >= PLATFORM_LEAD_DAYS ? limited : theatrical;
+  }
+
   for (const type of US_RELEASE_PREFERENCE) {
-    const matches = run.filter((r) => r.type === type).sort((a, b) => a.date.localeCompare(b.date));
-    if (matches.length) return matches[0].date;
+    const match = earliestOfType(type);
+    if (match) return match;
   }
 
   return run.sort((a, b) => a.date.localeCompare(b.date))[0].date;
@@ -268,11 +311,25 @@ function dayGap(a: string, b: string): number {
   return Number.isNaN(ms) ? Number.NaN : Math.round(ms / 86_400_000);
 }
 
+/*
+   Formatted in UTC, both halves of it.
+
+   `new Date("2026-12-18")` is midnight UTC, and `toLocaleDateString` then
+   renders it in whatever zone the runtime is set to. Anywhere west of
+   Greenwich that is still the 17th, so the same ISO date prints as two
+   different days depending on where the code runs. Vercel's functions are UTC
+   and hid this; a laptop in New York would not.
+*/
 function formatDate(raw?: string): string | undefined {
   if (!raw) return undefined;
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return undefined;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 function baseItem(raw: TmdbListItem, kind: MediaKind): MediaItem {

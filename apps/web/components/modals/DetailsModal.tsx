@@ -45,6 +45,9 @@ function sameCredit(a?: string, b?: string): boolean {
   return x.size === y.size && [...x].every((n) => y.has(n));
 }
 
+/** Release fields `/api/enrich` owns; see the merge in `DetailsModal`. */
+const ENRICHED_WINS = new Set(["year", "releaseDate", "releaseIso", "releaseConfirmed"]);
+
 export function DetailsModal({ item }: { item: MediaItem }) {
   const close = useAppStore((s) => s.closeDetails);
   const inLibrary = useAppStore((s) => (item.imdbId ? s.libraryIds.has(item.imdbId) : false));
@@ -78,14 +81,32 @@ export function DetailsModal({ item }: { item: MediaItem }) {
     };
   }, [item.imdbId, item.tmdbId, item.kind, item.key]);
 
-  // The list item wins wherever it has a value — its poster is the textless
-  // art we deliberately picked during enrichment.
+  /*
+     The list item wins wherever it has a value — its poster is the textless
+     art we deliberately picked during enrichment — except on the release.
+
+     Half the places a card comes from never worked one out. A person's
+     filmography is built straight from `combined_credits`, which carries
+     TMDB's `release_date`: the earliest opening anywhere on earth. So opening
+     28 Days Later from Cillian Murphy's page put 2002 over the American 2003
+     the panel had just fetched, and The Impossible read September 2012 against
+     January 2013 — 248 of 450 film credits sampled disagreed with the date the
+     rest of the app shows. Calendar entries and Cinemeta-sourced rails have
+     the same gap.
+
+     `/api/enrich` is the one caller that runs the full US release record
+     through `usReleaseDate`, so it keeps these four fields. A date that
+     changes depending on which card you clicked is worse than either answer
+     on its own.
+  */
   const full: MediaItem =
     fetched?.key === item.key
       ? ({
           ...fetched.meta,
           ...Object.fromEntries(
-            Object.entries(item).filter(([, v]) => v !== undefined && v !== ""),
+            Object.entries(item).filter(
+              ([k, v]) => v !== undefined && v !== "" && !ENRICHED_WINS.has(k),
+            ),
           ),
         } as MediaItem)
       : item;
@@ -377,6 +398,7 @@ export function DetailsModal({ item }: { item: MediaItem }) {
             <Icon name="open_in_new" className="text-[16px]" />
           </a>
         ) : null}
+
       </div>
     </ModalShell>
   );

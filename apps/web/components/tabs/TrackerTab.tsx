@@ -8,6 +8,7 @@ import { useFetch } from "@/lib/useFetch";
 import { useAppStore } from "@/store/useAppStore";
 import { Carousel } from "@/components/ui/Carousel";
 import { HeroCarousel } from "@/components/ui/HeroCarousel";
+import { releaseLabel } from "@/lib/release";
 import { PosterImage } from "@/components/ui/PosterImage";
 import { Icon } from "@/components/ui/Icon";
 import { EmptyState, ErrorState, LoadingState, PosterSkeleton } from "@/components/ui/States";
@@ -144,15 +145,11 @@ function TrackerCard({ item }: { item: MediaItem }) {
       <div className="carousel-info">
         <div className="carousel-name">{item.title}</div>
         {/*
-           Same rule as the details panel: a day only where one has been
-           announced, otherwise the year. A tracker that prints invented dates
-           is worse than one that admits it only knows the year.
+           Same rule as the details panel and the hero above: a day only where
+           one has been announced, otherwise the year. A tracker that prints
+           invented dates is worse than one that admits it only knows the year.
         */}
-        <div className="carousel-date">
-          {item.releaseIso && !item.releaseConfirmed
-            ? item.releaseIso.slice(0, 4)
-            : (item.releaseDate ?? "TBA")}
-        </div>
+        <div className="carousel-date">{releaseLabel(item)}</div>
         {item.director || item.cast ? (
           <div className="carousel-desc mt-1.5 font-semibold text-white/85">
             {item.director ? (
