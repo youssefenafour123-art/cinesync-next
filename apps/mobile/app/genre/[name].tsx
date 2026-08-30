@@ -1,17 +1,20 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { MotiView } from "moti";
 import type { GenrePayload } from "@cinesync/shared/payloads";
-import type { MediaKind } from "@cinesync/shared/types";
-import { endpoints } from "@cinesync/shared/api";
+import type { MediaItem, MediaKind } from "@cinesync/shared/types";
+import { endpoints, fetchJson } from "@cinesync/shared/api";
 import { useFetch } from "@/lib/useFetch";
 import { PosterCard } from "@/components/ui/PosterCard";
 import { Icon } from "@/components/ui/Icon";
-import { ErrorState, LoadingState } from "@/components/ui/States";
+import { ErrorState } from "@/components/ui/States";
 import { ON_SURFACE_VARIANT } from "@/lib/theme";
 
 const NOUN: Record<MediaKind, string> = { movie: "films", series: "series" };
+
+/** Placeholder cells while the first slice is assembled — one screen's worth. */
+const SKELETONS = 6;
 
 /**
  * One genre, opened from a genre chip on a title.
@@ -40,7 +43,44 @@ export default function GenreScreen() {
     endpoints.genre(name ?? "", asked),
   );
 
+  /*
+    Everything Show more has fetched, tagged with the catalogue it belongs to.
+
+    Tagged rather than cleared so switching to Movies does not need an effect
+    watching `asked` — the render works it out, and flipping back is a cache
+    hit on URLs already fetched.
+  */
+  const [more, setMore] = useState<{ forKind: MediaKind; page: number; items: MediaItem[] }>({
+    forKind: asked,
+    page: 1,
+    items: [],
+  });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
+  // The most recent slice knows whether another exists; `data` only ever
+  // describes page one.
+  const [last, setLast] = useState<GenrePayload | null>(null);
+
+  const mine = more.forKind === asked ? more : { forKind: asked, page: 1, items: [] };
+  const tail = last && last.genre?.kind === data?.genre?.kind ? last : data;
+
+  const showMore = useCallback(async () => {
+    const next = mine.page + 1;
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      const payload = await fetchJson<GenrePayload>(endpoints.genre(name ?? "", asked, next));
+      setMore({ forKind: asked, page: next, items: [...mine.items, ...payload.items] });
+      setLast(payload);
+    } catch (err) {
+      setMoreError(err instanceof Error ? err.message : "Couldn't load more.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [asked, mine.items, mine.page, name]);
+
   const genre = data?.genre ?? null;
+  const items = [...(data?.items ?? []), ...mine.items];
 
   /*
      What actually came back, rather than what was asked for.
@@ -134,7 +174,17 @@ export default function GenreScreen() {
           {error && !data ? (
             <ErrorState message={error} onRetry={reload} />
           ) : loading && !data ? (
-            <LoadingState label={`Finding the best of ${title}`} />
+            /* The shape of the answer while it is being worked out — a genre
+               is assembled, not looked up, and the first viewer in an hour
+               waits for it. Cells already the right size mean nothing moves
+               when the posters land. */
+            <View className="flex-row flex-wrap justify-between gap-y-6" accessibilityLabel={`Finding the best of ${title}`}>
+              {Array.from({ length: SKELETONS }).map((_, i) => (
+                <View key={i} className="w-[48%]">
+                  <View className="aspect-[2/3] rounded-[14px] bg-surface-container opacity-60" />
+                </View>
+              ))}
+            </View>
           ) : !genre ? (
             /* A chip TMDB has no genre for at all — IMDb sorts by Biography,
                Film-Noir, Sport and Short, and TMDB does not. Nothing is broken
@@ -143,7 +193,7 @@ export default function GenreScreen() {
               TMDB doesn’t sort titles by {name}. That chip comes from IMDb’s list of genres, which
               is the longer of the two — there is no page to show behind it.
             </Text>
-          ) : (data?.items.length ?? 0) === 0 ? (
+          ) : items.length === 0 ? (
             <Text className="px-4 py-10 text-center font-body text-body-md leading-6 text-on-surface-variant">
               Nothing in {title} clears the bar on the{" "}
               {answered === "series" ? "television" : "film"} side — the genre exists, but TMDB has
@@ -156,13 +206,36 @@ export default function GenreScreen() {
               key={`${title}-${answered}`}
               className="flex-row flex-wrap justify-between gap-y-6"
             >
-              {data!.items.map((item, i) => (
+              {items.map((item, i) => (
                 <View key={item.key} className="w-[48%]">
                   <PosterCard item={item} variant="grid" index={i} />
                 </View>
               ))}
             </View>
           )}
+
+          {/* More of the same genre, read on from where this slice stopped
+              rather than re-sorted from a wider pool — nothing already on
+              screen moves. Fetched on the press: most people never ask. */}
+          {genre && items.length > 0 && tail?.hasMore ? (
+            <View className="mt-7 items-center gap-3">
+              {moreError ? (
+                <Text className="font-body text-[13px] text-error">{moreError}</Text>
+              ) : null}
+              <Pressable
+                onPress={showMore}
+                disabled={loadingMore}
+                accessibilityRole="button"
+                className={`rounded-full border border-white/10 bg-surface-container/60 px-7 py-3 active:opacity-80 ${
+                  loadingMore ? "opacity-60" : ""
+                }`}
+              >
+                <Text className="font-body-medium text-label-md text-on-surface-variant">
+                  {loadingMore ? "Finding more…" : moreError ? "Try again" : "Show more"}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </MotiView>
     </ScrollView>

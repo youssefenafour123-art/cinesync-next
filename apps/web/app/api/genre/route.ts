@@ -13,8 +13,24 @@ export const revalidate = 3600;
  */
 export type { GenrePayload };
 
-/** Titles a genre page shows. Same pool as a mood rail, for the same reasons. */
+/** Titles one slice of a genre page holds. Same pool as a mood rail. */
 const LIMIT = 24;
+/** TMDB discover pages read per slice. 60 candidates for a shortlist of 32. */
+const TMDB_PAGES = 3;
+/**
+ * How far "Show more" will go: 72 titles, three presses.
+ *
+ * A bound rather than an open feed, and it is a caching decision as much as an
+ * editorial one. `/api/mood` documents the trap — a free `?size=` or `?page=`
+ * multiplies the cache entries behind every genre by every value anyone can
+ * type. Three fixed slices is 105 possible responses across the whole genre
+ * catalogue, which is a cache; unbounded paging is not.
+ *
+ * Three is also about where the answer stops being one. Ranked by weighted
+ * rating inside a vote floor, the seventy-third best film in a genre is no
+ * longer a recommendation, it is a list.
+ */
+const MAX_PAGE = 3;
 
 /**
  * The quality bar, per catalogue.
@@ -95,6 +111,9 @@ export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
   const name = params.get("name")?.trim() ?? "";
   const asked: MediaKind = params.get("kind") === "series" ? "series" : "movie";
+  // Clamped rather than rejected: a page past the end is a client that has
+  // lost count, and the honest answer is the last slice, not a 400.
+  const page = Math.min(Math.max(Number(params.get("page")) || 1, 1), MAX_PAGE);
 
   if (!name) {
     return Response.json({ error: "Pass ?name=Thriller&kind=movie" }, { status: 400 });
@@ -123,9 +142,10 @@ export async function GET(req: Request) {
        `genre` is null.
     */
     if (!own && !across) {
-      return Response.json({ genre: null, counterpart: null, items: [] } satisfies GenrePayload, {
-        headers: CATALOGUE_CACHE,
-      });
+      return Response.json(
+        { genre: null, counterpart: null, items: [], page, hasMore: false } satisfies GenrePayload,
+        { headers: CATALOGUE_CACHE },
+      );
     }
 
     // The catalogue that actually answered, and the one left over.
@@ -144,7 +164,8 @@ export async function GET(req: Request) {
       {
         minVotes: bar.minVotes,
         limit: LIMIT,
-        pages: 3,
+        pages: TMDB_PAGES,
+        firstPage: (page - 1) * TMDB_PAGES + 1,
         shortlist: 32,
         /*
            Titles the genre actually describes, first.
@@ -164,6 +185,10 @@ export async function GET(req: Request) {
         genre: { id: genre.id, name: genre.name, kind },
         counterpart: twin ? { id: twin.id, name: twin.name, kind: other } : null,
         items,
+        page,
+        // A short slice means the pool under the vote floor ran out, which is
+        // the end of the genre whatever `MAX_PAGE` says.
+        hasMore: page < MAX_PAGE && items.length === LIMIT,
       } satisfies GenrePayload,
       { headers: CATALOGUE_CACHE },
     );

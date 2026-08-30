@@ -1,16 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import type { GenrePayload } from "@/app/api/genre/route";
-import type { MediaKind } from "@/lib/types";
+import type { MediaItem, MediaKind } from "@/lib/types";
 import { useFetch } from "@/lib/useFetch";
 import { useAppStore } from "@/store/useAppStore";
 import { TitleCard } from "@/components/ui/RailGrid";
-import { ErrorState, LoadingState } from "@/components/ui/States";
+import { ErrorState } from "@/components/ui/States";
 import { ModalShell } from "./ModalShell";
 
 const NOUN: Record<MediaKind, string> = { movie: "films", series: "series" };
+
+/** Placeholder cells while the first slice is assembled — one screen's worth. */
+const SKELETONS = 8;
 
 /**
  * One genre, opened from a genre chip on a title.
@@ -47,8 +50,55 @@ export function GenreModal({ name, kind }: { name: string; kind: MediaKind }) {
     `/api/genre?name=${encodeURIComponent(name)}&kind=${asked}`,
   );
 
+  /*
+     Everything Show more has fetched, and which catalogue it belongs to.
+
+     Tagged rather than cleared, because clearing it would mean an effect
+     watching `asked` — a cascading render for something the render can just
+     work out. Flipping to TV Shows makes `more.forKind` stale and the extra
+     films disappear on the spot; flipping back is a cache hit on the same
+     URLs, so the pages come straight back.
+  */
+  const [more, setMore] = useState<{ forKind: MediaKind; page: number; items: MediaItem[] }>({
+    forKind: asked,
+    page: 1,
+    items: [],
+  });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
+  /*
+     The most recent slice, which is the one that knows whether another exists.
+     `data` only ever describes page one, so on its own it would keep offering
+     Show more after the pool had run out.
+  */
+  const [last, setLast] = useState<GenrePayload | null>(null);
+
+  const mine = more.forKind === asked ? more : { forKind: asked, page: 1, items: [] };
+
+  const showMore = useCallback(async () => {
+    const next = mine.page + 1;
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      const res = await fetch(`/api/genre?name=${encodeURIComponent(name)}&kind=${asked}&page=${next}`);
+      const payload = (await res.json()) as GenrePayload & { error?: string };
+      if (!res.ok) throw new Error(payload.error ?? "Couldn't load more.");
+      setMore({ forKind: asked, page: next, items: [...mine.items, ...payload.items] });
+      // The route decides when the pool is out, and the last slice it served
+      // is the one that knows.
+      setLast(payload);
+    } catch (err) {
+      setMoreError(err instanceof Error ? err.message : "Couldn't load more.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [asked, mine.items, mine.page, name]);
+
+  // Ignored once the catalogue changes underneath it, same reasoning as `mine`.
+  const tail = last && last.genre?.kind === data?.genre?.kind ? last : data;
+
   const genre = data?.genre ?? null;
-  const items = data?.items ?? [];
+  const items = [...(data?.items ?? []), ...mine.items];
 
   /*
      The catalogue that actually answered, and the name TMDB filed it under.
@@ -138,7 +188,28 @@ export function GenreModal({ name, kind }: { name: string; kind: MediaKind }) {
           {error ? (
             <ErrorState message={error} onRetry={reload} />
           ) : loading && !data ? (
-            <LoadingState label={`Finding the best of ${title}…`} />
+            /*
+               The shape of the answer, while it is being worked out.
+
+               A genre is assembled rather than looked up — sixty candidates
+               ranked, thirty-two priced against IMDb — and the first viewer of
+               a genre in any hour waits a second or two for it while everyone
+               after them is served from cache in about a tenth of one. A
+               spinner in an empty panel makes that read as a stall; the grid
+               it is about to fill does not, and nothing moves when the posters
+               arrive because the cells are already the right size.
+            */
+            <div
+              className="grid grid-cols-2 gap-unit md:grid-cols-3 lg:grid-cols-4"
+              aria-busy="true"
+              aria-label={`Finding the best of ${title}`}
+            >
+              {Array.from({ length: SKELETONS }).map((_, i) => (
+                <div key={i} className="animate-pulse">
+                  <div className="aspect-[2/3] rounded border border-white/5 bg-surface-container" />
+                </div>
+              ))}
+            </div>
           ) : !genre ? (
             /*
                A chip TMDB has no genre for at all. The wording is IMDb's, by
@@ -169,6 +240,31 @@ export function GenreModal({ name, kind }: { name: string; kind: MediaKind }) {
               ))}
             </motion.div>
           )}
+
+          {/*
+             More of the same genre, further down the same ranking — the route
+             reads on from where this slice stopped rather than re-sorting a
+             wider pool, so nothing already on screen moves.
+
+             Fetched on the press and not before. Most people never ask, and
+             the whole point of the work above was to stop the page paying for
+             titles nobody looked at.
+          */}
+          {genre && items.length > 0 && tail?.hasMore ? (
+            <div className="mt-8 flex flex-col items-center gap-3">
+              {moreError ? (
+                <p className="font-body-md text-[13px] text-error">{moreError}</p>
+              ) : null}
+              <button
+                type="button"
+                onClick={showMore}
+                disabled={loadingMore}
+                className="rounded-full border border-white/10 bg-surface-container/60 px-7 py-3 font-label-md text-label-md text-on-surface-variant transition-colors hover:border-primary/40 hover:text-on-surface disabled:opacity-60"
+              >
+                {loadingMore ? "Finding more…" : moreError ? "Try again" : "Show more"}
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </ModalShell>

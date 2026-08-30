@@ -162,6 +162,17 @@ export interface GenrePayload {
    */
   counterpart: { id: number; name: string; kind: MediaKind } | null;
   items: MediaItem[];
+  /** Which slice of the genre this is. 1-based; the client appends the rest. */
+  page: number;
+  /**
+   * Whether asking for `page + 1` is worth doing.
+   *
+   * False once a page comes back short — the pool under the vote floor is
+   * exhausted — and false at the last page the route will serve, so the
+   * client can hide "Show more" rather than offering a button that answers
+   * with nothing.
+   */
+  hasMore: boolean;
 }
 
 /** `GET /api/runtimes?ids=tt0111161:movie:278,tt0903747:series` */

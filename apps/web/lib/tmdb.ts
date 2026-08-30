@@ -949,6 +949,7 @@ async function discoverRaw(
   endpoint: "movie" | "tv",
   params: Record<string, string>,
   pages = 1,
+  firstPage = 1,
 ): Promise<TmdbListItem[]> {
   /*
      All the pages at once, in page order.
@@ -959,7 +960,7 @@ async function discoverRaw(
      the order matters: everything downstream ranks the pool itself, but a rail
      that fell back to TMDB's own sequence would otherwise get it shuffled.
   */
-  const pageNumbers = Array.from({ length: pages }, (_, i) => i + 1);
+  const pageNumbers = Array.from({ length: pages }, (_, i) => firstPage + i);
   const answers = await Promise.all(
     pageNumbers.map((page) =>
       tmdb<{ results?: TmdbListItem[] }>(`/discover/${endpoint}`, {
@@ -1007,6 +1008,16 @@ interface CurateOptions {
    * precise, and this would just thin it.
    */
   leadGenre?: string;
+  /**
+   * Which TMDB page the pool starts at. `pages` still says how many follow.
+   *
+   * The genre page's "Show more" is the only caller that moves it. Ranking
+   * happens inside whatever pool is drawn, so page four onward is genuinely
+   * "the next ones down" rather than a reshuffle of what is already on
+   * screen — TMDB is already sorting the catalogue, and this reads further
+   * along that sort rather than re-sorting a wider slice of it.
+   */
+  firstPage?: number;
 }
 
 /** How far down a title's genre list still counts as leading. */
@@ -1031,11 +1042,12 @@ async function curate(
     pages = 2,
     shortlist: shortlistSize,
     leadGenre,
+    firstPage = 1,
   }: CurateOptions = {},
 ): Promise<MediaItem[]> {
   const kind: MediaKind = endpoint === "movie" ? "movie" : "series";
 
-  const raw = (await discoverRaw(endpoint, params, pages)).filter(
+  const raw = (await discoverRaw(endpoint, params, pages, firstPage)).filter(
     (r) => r.poster_path && r.overview && (r.vote_count ?? 0) > 0,
   );
   if (!raw.length) return [];

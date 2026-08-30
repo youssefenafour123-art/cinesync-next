@@ -58,7 +58,8 @@ export const endpoints = {
   /** "More like this", from the IMDb id of something already watched. */
   similar: (imdb: string) => apiUrl("/api/similar", { imdb }),
   /** One genre's best titles, from the name printed on a title's genre chip. */
-  genre: (name: string, kind: "movie" | "series") => apiUrl("/api/genre", { name, kind }),
+  genre: (name: string, kind: "movie" | "series", page = 1) =>
+    apiUrl("/api/genre", { name, kind, page: page > 1 ? page : undefined }),
   imdbList: (url: string) => apiUrl("/api/imdb-list", { url }),
   stremio: (method: string) => apiUrl(`/api/stremio/${method}`),
 } as const;
