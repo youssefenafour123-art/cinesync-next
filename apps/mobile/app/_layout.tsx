@@ -85,6 +85,7 @@ export default function RootLayout() {
           */}
           <Stack.Screen name="title/[key]" options={{ presentation: "modal" }} />
           <Stack.Screen name="person/[id]" options={{ presentation: "modal" }} />
+          <Stack.Screen name="genre/[name]" options={{ presentation: "modal" }} />
           <Stack.Screen name="search" options={{ presentation: "modal" }} />
           <Stack.Screen
             name="trailer/[videoId]"

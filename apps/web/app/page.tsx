@@ -95,6 +95,9 @@ const SearchModal = dynamic(() => chunks.search().then((m) => m.SearchModal));
 const PersonModal = dynamic(() =>
   import("@/components/modals/PersonModal").then((m) => m.PersonModal),
 );
+const GenreModal = dynamic(() =>
+  import("@/components/modals/GenreModal").then((m) => m.GenreModal),
+);
 const UserProfileModal = dynamic(() =>
   import("@/components/modals/UserProfileModal").then((m) => m.UserProfileModal),
 );
@@ -154,6 +157,7 @@ export default function Home() {
   }, [setAuthOpen, showToast]);
   const searchOpen = useAppStore((s) => s.searchOpen);
   const personId = useAppStore((s) => s.personId);
+  const genre = useAppStore((s) => s.genre);
   const viewedUserId = useAppStore((s) => s.viewedUserId);
 
   const motionPreference = useMotionPreference();
@@ -316,6 +320,12 @@ export default function Home() {
 
       <AnimatePresence>
         {personId ? <PersonModal key={`person-${personId}`} id={personId} /> : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {genre ? (
+          <GenreModal key={`genre-${genre.kind}-${genre.name}`} name={genre.name} kind={genre.kind} />
+        ) : null}
       </AnimatePresence>
 
       <AnimatePresence>

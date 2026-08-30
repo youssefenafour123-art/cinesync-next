@@ -217,14 +217,27 @@ export default function TitleScreen() {
 
         {full.genres?.length ? (
           <Section title="Genres">
+            {/*
+              Each chip opens that genre. They were labels, and every one was
+              already the answer to a question somebody reading this screen is
+              likely to have — the genres are printed here precisely because
+              they say what the title is. `full.kind` travels with the name
+              because TMDB keeps separate genre vocabularies for film and
+              television, so the name alone does not identify a genre.
+            */}
             <View className="flex-row flex-wrap gap-2.5">
               {full.genres.map((g) => (
-                <View
+                <Pressable
                   key={g}
-                  className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5"
+                  onPress={() =>
+                    router.push({ pathname: "/genre/[name]", params: { name: g, kind: full.kind } })
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={`Browse ${g}`}
+                  className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 active:opacity-70"
                 >
                   <Text className="font-body-medium text-[13px] text-primary">{g}</Text>
-                </View>
+                </Pressable>
               ))}
             </View>
           </Section>

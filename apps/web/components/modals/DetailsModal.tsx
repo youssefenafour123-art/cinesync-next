@@ -51,6 +51,7 @@ const ENRICHED_WINS = new Set(["year", "releaseDate", "releaseIso", "releaseConf
 
 export function DetailsModal({ item }: { item: MediaItem }) {
   const close = useAppStore((s) => s.closeDetails);
+  const openGenre = useAppStore((s) => s.openGenre);
   const inLibrary = useAppStore((s) => (item.imdbId ? s.libraryIds.has(item.imdbId) : false));
   const { add, remove, adding, removing } = useLibraryActions();
   const watchlist = useWatchlist();
@@ -360,14 +361,27 @@ export function DetailsModal({ item }: { item: MediaItem }) {
             <h3 className="mb-3 font-label-md text-label-md uppercase tracking-widest text-primary">
               Genres
             </h3>
+            {/*
+               Each chip opens that genre, in this title's catalogue.
+
+               They were labels, and every one of them was already the answer to
+               a question somebody reading this panel is likely to have — the
+               genres are printed here precisely because they say what the film
+               is. `full.kind` travels with the name because TMDB keeps separate
+               genre vocabularies for film and television, so the name alone
+               does not identify a genre.
+            */}
             <div className="flex flex-wrap gap-2.5">
               {full.genres.map((g) => (
-                <span
+                <button
                   key={g}
-                  className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 font-label-md text-[13px] text-primary"
+                  type="button"
+                  onClick={() => openGenre(g, full.kind)}
+                  title={`Browse ${g}`}
+                  className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 font-label-md text-[13px] text-primary transition-colors hover:border-primary/50 hover:bg-primary/20"
                 >
                   {g}
-                </span>
+                </button>
               ))}
             </div>
           </div>

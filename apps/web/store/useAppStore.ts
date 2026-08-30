@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import type { AppNotification } from "@/lib/notifications";
 import type { LibraryEntry, LibrarySnapshot, WatchedTitle } from "@/lib/stremio";
-import type { MediaItem } from "@/lib/types";
+import type { MediaItem, MediaKind } from "@/lib/types";
 
 /**
  * `short` is the mobile tab bar's label, and only exists where the full one no
@@ -69,6 +69,18 @@ interface AppState {
   personId: number | null;
   openPerson: (id: number) => void;
   closePerson: () => void;
+
+  /**
+   * Genre browsed in the genre modal; null when closed.
+   *
+   * The name, not an id, because that is what the chip that opened it had —
+   * `enrich` keeps TMDB's genre names and drops the ids. The kind travels with
+   * it because the two catalogues are different vocabularies: Thriller exists
+   * only on the film side, so a name alone does not identify a genre.
+   */
+  genre: { name: string; kind: MediaKind } | null;
+  openGenre: (name: string, kind: MediaKind) => void;
+  closeGenre: () => void;
 
   /*
      Someone else's CineSync account, shown in a modal.
@@ -173,6 +185,12 @@ export const useAppStore = create<AppState>((set) => ({
   // from. `useModalBehavior` hands out the z-index that makes that work.
   openPerson: (personId) => set({ personId, searchOpen: false }),
   closePerson: () => set({ personId: null }),
+
+  genre: null,
+  // Stacks over the title it was opened from, exactly as a person profile
+  // does, so closing it puts you back on the film whose chip you pressed.
+  openGenre: (name, kind) => set({ genre: { name, kind } }),
+  closeGenre: () => set({ genre: null }),
 
   viewedUserId: null,
   openUserProfile: (viewedUserId) => set({ viewedUserId, searchOpen: false }),

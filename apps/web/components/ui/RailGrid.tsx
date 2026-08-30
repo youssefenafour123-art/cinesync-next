@@ -106,7 +106,7 @@ export function RailGrid({
           animate="show"
         >
           {items.map((item) => (
-            <CuratedCard key={item.key} item={item} />
+            <TitleCard key={item.key} item={item} />
           ))}
         </motion.div>
       )}
@@ -125,7 +125,17 @@ export function RailGrid({
   );
 }
 
-function CuratedCard({ item }: { item: MediaItem }) {
+/**
+ * One poster in a grid: the art, an In Library badge, and the hover panel with
+ * the rating, the year and the opening of the synopsis.
+ *
+ * Exported because the genre page shows the same tile outside a rail — it has
+ * its own heading and no rotating window, so it renders the grid itself rather
+ * than borrowing `RailGrid`'s. Sharing the tile is the part that matters: a
+ * second copy is where the library badge or the hover panel quietly stops
+ * matching everywhere else.
+ */
+export function TitleCard({ item }: { item: MediaItem }) {
   const openDetails = useAppStore((s) => s.openDetails);
   const inLibrary = useAppStore((s) => (item.imdbId ? s.libraryIds.has(item.imdbId) : false));
 

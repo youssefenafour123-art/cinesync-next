@@ -137,6 +137,33 @@ export interface SimilarPayload {
   items: MediaItem[];
 }
 
+/** `GET /api/genre?name=Thriller&kind=movie` */
+export interface GenrePayload {
+  /**
+   * The genre TMDB actually answered with — its own name, its own id, and the
+   * catalogue it was read from.
+   *
+   * All three are echoed because none of them is what was asked for. The
+   * request carries whatever was printed on a genre chip, and those names come
+   * from Cinemeta, which uses IMDb's vocabulary: "Sci-Fi" where TMDB writes
+   * "Science Fiction", "Musical" where TMDB writes "Music". The catalogue can
+   * differ too — TMDB files Thriller as a film genre and has no television one
+   * — so a chip on a series can honestly be answered with films, as long as
+   * the client is told that is what happened.
+   *
+   * Null when the name matches nothing in either vocabulary, which is not a
+   * failure: IMDb files Biography, Film-Noir, Sport and Short, and TMDB simply
+   * does not. An empty page saying so beats an error.
+   */
+  genre: { id: number; name: string; kind: MediaKind } | null;
+  /**
+   * The same genre in the other catalogue, when TMDB has one. Null is what
+   * makes the client offer no switch rather than a switch that leads nowhere.
+   */
+  counterpart: { id: number; name: string; kind: MediaKind } | null;
+  items: MediaItem[];
+}
+
 /** `GET /api/runtimes?ids=tt0111161:movie:278,tt0903747:series` */
 export interface TitleRuntime {
   imdbId: string;

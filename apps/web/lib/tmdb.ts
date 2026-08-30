@@ -1463,6 +1463,33 @@ export async function discoverEnriched(
 export { curate };
 
 /* ------------------------------------------------------------------ *
+ * Genres
+ * ------------------------------------------------------------------ */
+
+/**
+ * TMDB's genre vocabulary for one catalogue.
+ *
+ * Fetched rather than hardcoded because it is also the answer to a second
+ * question: what a genre is *called*. `enrich` writes `item.genres` straight
+ * from TMDB's names, so those names are what ends up on a chip, and the only
+ * list guaranteed to match them is TMDB's own. A hand-written table drifts the
+ * day TMDB renames something and the failure is a genre chip that leads
+ * nowhere.
+ *
+ * Film and television are separate vocabularies with separate ids — see
+ * `Mood.tv` for how far apart they are — so the caller has to say which.
+ * Cached for a week: this list changes roughly never.
+ */
+export async function genreCatalogue(kind: MediaKind): Promise<{ id: number; name: string }[]> {
+  const data = await tmdb<{ genres?: { id: number; name: string }[] }>(
+    `/genre/${kind === "movie" ? "movie" : "tv"}/list`,
+    {},
+    604800,
+  );
+  return data.genres ?? [];
+}
+
+/* ------------------------------------------------------------------ *
  * Search
  * ------------------------------------------------------------------ */
 
