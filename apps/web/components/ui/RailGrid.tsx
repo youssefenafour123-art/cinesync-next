@@ -21,7 +21,23 @@ import { Icon } from "@/components/ui/Icon";
 /** Titles a rail shows at once, out of the larger pool the route returns. */
 const RAIL_SIZE = 12;
 
-export function RailGrid({ rail, expandable = false }: { rail: Rail; expandable?: boolean }) {
+export function RailGrid({
+  rail,
+  expandable = false,
+  compact = false,
+}: {
+  rail: Rail;
+  expandable?: boolean;
+  /**
+   * Sized for a panel column rather than the page.
+   *
+   * The details modal renders one of these beside a 340px poster, so the
+   * page heading is a size too large for the sections around it and the
+   * fourth column would make the posters thumbnails. Nothing about the rail
+   * itself changes — same cards, same order, same expand rules.
+   */
+  compact?: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
@@ -58,10 +74,14 @@ export function RailGrid({ rail, expandable = false }: { rail: Rail; expandable?
 
   return (
     <>
-      <div className="mb-6 border-b border-white/10 pb-4">
+      <div className={compact ? "mb-4" : "mb-6 border-b border-white/10 pb-4"}>
         <h2
           ref={headingRef}
-          className="font-headline-lg text-headline-lg-mobile text-on-surface md:text-headline-lg"
+          className={
+            compact
+              ? "font-label-md text-label-md uppercase tracking-widest text-primary"
+              : "font-headline-lg text-headline-lg-mobile text-on-surface md:text-headline-lg"
+          }
         >
           {rail.title}
         </h2>
@@ -76,7 +96,11 @@ export function RailGrid({ rail, expandable = false }: { rail: Rail; expandable?
         </p>
       ) : (
         <motion.div
-          className="grid grid-cols-2 gap-unit md:grid-cols-3 lg:grid-cols-4"
+          className={
+            compact
+              ? "grid grid-cols-2 gap-unit sm:grid-cols-3"
+              : "grid grid-cols-2 gap-unit md:grid-cols-3 lg:grid-cols-4"
+          }
           variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}
           initial="hidden"
           animate="show"

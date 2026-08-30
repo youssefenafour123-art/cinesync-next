@@ -12,6 +12,7 @@ import { useTrailer } from "@/lib/useTrailer";
 import { PosterImage } from "@/components/ui/PosterImage";
 import { ScoresPanel } from "@/components/ui/ScoresPanel";
 import { AwardsBadge } from "@/components/ui/AwardsBadge";
+import { SimilarRail } from "@/components/ui/SimilarRail";
 import { Icon } from "@/components/ui/Icon";
 import { ModalShell } from "./ModalShell";
 
@@ -399,6 +400,37 @@ export function DetailsModal({ item }: { item: MediaItem }) {
           </a>
         ) : null}
 
+        {/*
+           The same rail Find Similar shows on Curated Picks, seeded by the
+           title you are already looking at rather than by one you typed. The
+           picker up there exists to settle which of the twenty-seven films
+           called Arrival you meant; here that question is already answered, so
+           the rail is all that is left of the feature.
+
+           Last, and below the mobile action buttons on purpose. Those buttons
+           "live at the end of the scroll area" — putting ten posters above
+           them would put Add to Library a grid's worth of scrolling away on a
+           phone, which is the one thing this panel is for.
+
+           Seeded from `item`, not `full`. The ids on the merged record can
+           arrive late: a card opened from a person's filmography has a TMDB id
+           and no IMDb one until `/api/enrich` answers, and reading them from
+           `full` would start on the TMDB branch and then switch URLs mid-view,
+           throwing away the first request's answer. The card that was clicked
+           always carries one of the two, because the enrichment above needs
+           one too.
+        */}
+        {item.imdbId || item.tmdbId ? (
+          <div className="mt-10 border-t border-white/10 pt-8">
+            <SimilarRail
+              imdbId={item.imdbId}
+              tmdbId={item.tmdbId}
+              kind={item.kind}
+              title={full.title}
+              variant="panel"
+            />
+          </div>
+        ) : null}
       </div>
     </ModalShell>
   );
