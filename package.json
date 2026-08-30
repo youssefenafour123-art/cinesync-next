@@ -18,8 +18,9 @@
     "mobile:ios": "npm run ios --workspace cinesync-mobile",
     "mobile:android": "npm run android --workspace cinesync-mobile",
     "check:tokens": "node scripts/check-tokens.mjs",
+    "check:icons": "node scripts/check-icons.mjs",
     "mobile:typecheck": "npm run typecheck --workspace cinesync-mobile",
-    "verify": "npm run check:tokens && npm run build && npm run mobile:typecheck"
+    "verify": "npm run check:tokens && npm run check:icons && npm run build && npm run mobile:typecheck"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.17"

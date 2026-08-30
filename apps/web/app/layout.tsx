@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Outfit } from "next/font/google";
+import { MATERIAL_SYMBOLS_HREF } from "@/lib/icons";
 import "./globals.css";
 
 const inter = Inter({
@@ -97,14 +98,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           name IS its text content. With `swap` the raw word "account_circle"
           flashes on screen before the font arrives.
 
+          The href names every glyph the app uses — see `lib/icons.ts`. Without
+          that list Google serves the entire family, which with these four axes
+          is a 3.87 MB font file blocking every icon on the page; with it, 71 KB.
+
           The lint rule below targets `pages/_document.js`; this is the App
           Router, where a <link> in the root layout is the documented approach.
         */}
         {/* eslint-disable-next-line @next/next/no-page-custom-font, @next/next/google-font-display */}
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block"
-        />
+        <link rel="stylesheet" href={MATERIAL_SYMBOLS_HREF} />
       </head>
       <body className="bg-background text-on-surface font-body-md text-body-md overflow-x-hidden">
         {children}
