@@ -413,21 +413,69 @@ function writingCredit(
  * one exists — the artistic textless poster, matching the legacy enrichment.
  * Failures degrade to the un-enriched item rather than throwing.
  */
-async function enrich(raw: TmdbListItem, kind: MediaKind): Promise<MediaItem> {
+/**
+ * What a caller needs out of one title.
+ *
+ * The detail response is the most expensive thing this module fetches, and
+ * `append_to_response` is what makes it expensive: measured over sixteen
+ * films it is ~146 KB with everything appended, of which `credits` is ~71 KB
+ * and `images` ~63 KB. Every one of those bytes is fetched, parsed and then
+ * written into Next's data cache, and *that* — not the network — is where a
+ * cold rail spent its time. A pool of 32 titles was moving 4.7 MB to render
+ * a grid of posters, and the whole request took 0.4s of network inside 9-16s
+ * of wall clock.
+ */
+interface EnrichOptions {
+  /**
+   * Cast, crew and the trailer key.
+   *
+   * A rail card shows a poster, a year, a rating and the first line of the
+   * synopsis; none of it is cast or crew. The details panel needs all of it and
+   * fetches its own copy through `/api/enrich` the moment it opens, so a rail
+   * that carries credits is paying to prefill a panel that refills itself.
+   * `useTrailer` falls back to `/api/meta` when the key is missing, so Watch
+   * Trailer still works from a card that has none — one request, on click,
+   * instead of thirty-two on load.
+   */
+  credits?: boolean;
+}
+
+async function enrich(
+  raw: TmdbListItem,
+  kind: MediaKind,
+  { credits = true }: EnrichOptions = {},
+): Promise<MediaItem> {
   const item = baseItem(raw, kind);
   const endpoint = kind === "movie" ? "movie" : "tv";
 
   try {
+    /*
+       `include_image_language` names exactly the languages the ranker keeps.
+
+       It used to be omitted so `rankCommunityPosters` could choose freely, but
+       that function's first act is to throw away every poster outside
+       `null, en, <original language>` — so TMDB was sending 3,519 posters
+       across sixteen films for 1,494 to survive. Asking for the three that
+       count returns the same 1,494 and drops a fifth of the payload. `null`
+       is TMDB's own spelling for a textless sheet, which is the one this app
+       prefers.
+    */
+    const imageLanguages = ["null", "en", raw.original_language]
+      .filter((l, i, all): l is string => Boolean(l) && all.indexOf(l) === i)
+      .join(",");
+
+    const appends = [
+      ...(credits ? ["credits", "videos"] : []),
+      "images",
+      "external_ids",
+      // A movie-only append: one entry per country with an actually announced
+      // release, which is what `releaseConfirmed` below is decided on.
+      ...(endpoint === "movie" ? ["release_dates"] : []),
+    ];
+
     const detail = await tmdb<TmdbDetail>(`/${endpoint}/${raw.id}`, {
-      // No `include_image_language`: TMDB then returns every language, and
-      // `rankCommunityPosters` keeps the ones this title may wear.
-      //
-      // `release_dates` is a movie-only append and says whether a date has
-      // actually been announced anywhere — see `releaseConfirmed` below.
-      append_to_response:
-        endpoint === "movie"
-          ? "credits,videos,images,external_ids,release_dates"
-          : "credits,videos,images,external_ids",
+      append_to_response: appends.join(","),
+      include_image_language: imageLanguages,
     });
 
     const crew = detail.credits?.crew ?? [];
@@ -902,15 +950,25 @@ async function discoverRaw(
   params: Record<string, string>,
   pages = 1,
 ): Promise<TmdbListItem[]> {
-  const out: TmdbListItem[] = [];
-  for (let p = 1; p <= pages; p++) {
-    const data = await tmdb<{ results?: TmdbListItem[] }>(`/discover/${endpoint}`, {
-      ...params,
-      page: String(p),
-    });
-    out.push(...(data.results ?? []));
-  }
-  return out;
+  /*
+     All the pages at once, in page order.
+
+     They were fetched in a loop, which made three round trips out of what is
+     three independent requests — nothing on page two depends on page one, and
+     TMDB is happy to answer them together. `Promise.all` keeps the order, and
+     the order matters: everything downstream ranks the pool itself, but a rail
+     that fell back to TMDB's own sequence would otherwise get it shuffled.
+  */
+  const pageNumbers = Array.from({ length: pages }, (_, i) => i + 1);
+  const answers = await Promise.all(
+    pageNumbers.map((page) =>
+      tmdb<{ results?: TmdbListItem[] }>(`/discover/${endpoint}`, {
+        ...params,
+        page: String(page),
+      }),
+    ),
+  );
+  return answers.flatMap((data) => data.results ?? []);
 }
 
 interface CurateOptions {
@@ -995,7 +1053,16 @@ async function curate(
     .sort((a, b) => b.score - a.score)
     .slice(0, shortlistSize ?? limit * 2);
 
-  const enriched = await Promise.all(shortlist.map((r) => enrich(r.raw, kind)));
+  /*
+     Without credits — see `EnrichOptions.credits`.
+
+     Every caller of `curate` renders a grid of posters: the curated rails, the
+     moods, the genre pages, anime, Arabic and the gem. None of them prints a
+     cast or a director, and the panel that does re-fetches the title anyway.
+  */
+  const enriched = await Promise.all(
+    shortlist.map((r) => enrich(r.raw, kind, { credits: false })),
+  );
 
   const bar = postFloor ?? floor;
   const passed = enriched.filter((item) => {
