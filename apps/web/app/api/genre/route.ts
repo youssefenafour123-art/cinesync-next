@@ -1,5 +1,7 @@
+import { unstable_cache } from "next/cache";
 import { CATALOGUE_CACHE } from "@/lib/httpCache";
 import { curate, genreCatalogue } from "@/lib/tmdb";
+import type { MediaItem } from "@cinesync/shared/types";
 import type { GenrePayload } from "@cinesync/shared/payloads";
 import type { MediaKind } from "@/lib/types";
 
@@ -79,6 +81,61 @@ const ALIASES: Record<MediaKind, Record<string, string>> = {
   },
 };
 
+/**
+ * One slice, cached whole.
+ *
+ * The point is the *number* of cache entries, not the seconds. Building a
+ * slice is 3 discover requests and 32 enrichments, and every one of those used
+ * to be a separate entry in Next's data cache — 69 reads and 69 writes, each a
+ * round trip to a networked store on Vercel, to answer with one grid of
+ * posters. That, not TMDB, was the 5 to 14 seconds: the same work with plain
+ * `fetch` takes about 0.4.
+ *
+ * So the parts are fetched uncached (`dataCache: false`) and the finished
+ * answer is cached instead — one write, one read, one hour. Genre pages are
+ * exactly the shape that suits: 35 genres times 3 slices times 2 catalogues is
+ * a small, fixed set of keys, and nothing in the request is personal, so every
+ * viewer of Crime shares one entry.
+ *
+ * Keyed on its arguments, which is why they are all primitives. `unstable_cache`
+ * stringifies them, and an options object would key on a shape that has no
+ * business deciding cache identity.
+ */
+const slice = unstable_cache(
+  async (kind: MediaKind, genreId: number, genreName: string, page: number): Promise<MediaItem[]> => {
+    const bar = BARS[kind];
+    return curate(
+      kind === "movie" ? "movie" : "tv",
+      {
+        with_genres: String(genreId),
+        "vote_count.gte": bar.votes,
+        sort_by: "vote_average.desc",
+      },
+      {
+        minVotes: bar.minVotes,
+        limit: LIMIT,
+        pages: TMDB_PAGES,
+        firstPage: (page - 1) * TMDB_PAGES + 1,
+        shortlist: 32,
+        // The whole reason this wrapper exists — see above.
+        bulk: true,
+        /*
+           Titles the genre actually describes, first.
+
+           `with_genres` matches membership, and membership is generous — Pulp
+           Fiction is a Thriller by TMDB's reckoning. `leadGenre` tiers the
+           result so the page opens with the titles this genre leads for and
+           only reaches past them when it would otherwise come up short. It is
+           the whole reason a genre page is worth more than a filter.
+        */
+        leadGenre: genreName,
+      },
+    );
+  },
+  ["genre-slice"],
+  { revalidate: 3600 },
+);
+
 /** The chip's name, resolved against one catalogue's vocabulary. */
 function resolve(name: string, kind: MediaKind, catalogue: { id: number; name: string }[]) {
   const wanted = name.trim().toLowerCase();
@@ -153,32 +210,7 @@ export async function GET(req: Request) {
     const genre = (own ?? across)!;
     const twin = own ? across : undefined;
 
-    const bar = BARS[kind];
-    const items = await curate(
-      kind === "movie" ? "movie" : "tv",
-      {
-        with_genres: String(genre.id),
-        "vote_count.gte": bar.votes,
-        sort_by: "vote_average.desc",
-      },
-      {
-        minVotes: bar.minVotes,
-        limit: LIMIT,
-        pages: TMDB_PAGES,
-        firstPage: (page - 1) * TMDB_PAGES + 1,
-        shortlist: 32,
-        /*
-           Titles the genre actually describes, first.
-
-           `with_genres` matches membership, and membership is generous — Pulp
-           Fiction is a Thriller by TMDB's reckoning. `leadGenre` tiers the
-           result so the page opens with the titles this genre leads for and
-           only reaches past them when it would otherwise come up short. It is
-           the whole reason a genre page is worth more than a filter.
-        */
-        leadGenre: genre.name,
-      },
-    );
+    const items = await slice(kind, genre.id, genre.name, page);
 
     return Response.json(
       {

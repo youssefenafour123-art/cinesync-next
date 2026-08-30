@@ -1,5 +1,5 @@
 import "server-only";
-import { fetchImdbRating, fetchRuntimeMinutes } from "./cinemeta";
+import { BULK_TIMEOUT_MS, fetchImdbRating, fetchRuntimeMinutes } from "./cinemeta";
 import type {
   CreditedPerson,
   MediaItem,
@@ -11,6 +11,8 @@ import type {
 import type { LookupTitle, TitleRuntime } from "@cinesync/shared/payloads";
 
 const BASE = "https://api.themoviedb.org/3";
+
+
 const IMG = "https://image.tmdb.org/t/p";
 
 /**
@@ -92,7 +94,12 @@ async function tmdb<T>(path: string, params: Record<string, string> = {}, revali
   url.searchParams.set("api_key", API_KEY);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
 
-  const res = await fetch(url, { next: { revalidate } });
+  const res = await fetch(
+    url,
+    revalidate > 0
+      ? { next: { revalidate } }
+      : { cache: "no-store", signal: AbortSignal.timeout(BULK_TIMEOUT_MS) },
+  );
   if (!res.ok) throw new Error(`TMDB ${path} → ${res.status}`);
   return (await res.json()) as T;
 }
@@ -438,12 +445,21 @@ interface EnrichOptions {
    * instead of thirty-two on load.
    */
   credits?: boolean;
+  /**
+   * One of many, with the caller caching the finished answer.
+   *
+   * Two things follow. The response is not written into Next's data cache —
+   * see `CurateOptions.bulk` for why that is the whole cost of a cold rail —
+   * and the request is abandoned after `BULK_TIMEOUT_MS` rather than being
+   * allowed to hold up the thirty-one beside it.
+   */
+  bulk?: boolean;
 }
 
 async function enrich(
   raw: TmdbListItem,
   kind: MediaKind,
-  { credits = true }: EnrichOptions = {},
+  { credits = true, bulk = false }: EnrichOptions = {},
 ): Promise<MediaItem> {
   const item = baseItem(raw, kind);
   const endpoint = kind === "movie" ? "movie" : "tv";
@@ -473,10 +489,11 @@ async function enrich(
       ...(endpoint === "movie" ? ["release_dates"] : []),
     ];
 
-    const detail = await tmdb<TmdbDetail>(`/${endpoint}/${raw.id}`, {
-      append_to_response: appends.join(","),
-      include_image_language: imageLanguages,
-    });
+    const detail = await tmdb<TmdbDetail>(
+      `/${endpoint}/${raw.id}`,
+      { append_to_response: appends.join(","), include_image_language: imageLanguages },
+      bulk ? 0 : 3600,
+    );
 
     const crew = detail.credits?.crew ?? [];
     const castList = detail.credits?.cast ?? [];
@@ -667,7 +684,7 @@ async function enrich(
     if (imdbId) {
       item.imdbId = imdbId;
       item.key = imdbId;
-      const real = await fetchImdbRating(kind, imdbId);
+      const real = await fetchImdbRating(kind, imdbId, bulk);
       if (real) item.rating = real;
     }
   } catch {
@@ -950,6 +967,7 @@ async function discoverRaw(
   params: Record<string, string>,
   pages = 1,
   firstPage = 1,
+  bulk = false,
 ): Promise<TmdbListItem[]> {
   /*
      All the pages at once, in page order.
@@ -963,10 +981,11 @@ async function discoverRaw(
   const pageNumbers = Array.from({ length: pages }, (_, i) => firstPage + i);
   const answers = await Promise.all(
     pageNumbers.map((page) =>
-      tmdb<{ results?: TmdbListItem[] }>(`/discover/${endpoint}`, {
-        ...params,
-        page: String(page),
-      }),
+      tmdb<{ results?: TmdbListItem[] }>(
+        `/discover/${endpoint}`,
+        { ...params, page: String(page) },
+        bulk ? 0 : 3600,
+      ),
     ),
   );
   return answers.flatMap((data) => data.results ?? []);
@@ -1018,6 +1037,21 @@ interface CurateOptions {
    * along that sort rather than re-sorting a wider slice of it.
    */
   firstPage?: number;
+  /**
+   * The caller caches the finished rail, so its parts should not be cached.
+   *
+   * Building a rail is 3 discover requests and 32 enrichments, and each of
+   * those was a separate entry in Next's data cache: 69 reads and 69 writes,
+   * every one a round trip to a networked store on Vercel, to answer with one
+   * grid of posters. That was the whole of a 5-14 second cold rail — the same
+   * work with plain `fetch` takes about 0.4. Caching the answer instead of its
+   * parts is one write, and it also gives the timeout in `BULK_TIMEOUT_MS`
+   * somewhere safe to fall back to.
+   *
+   * Only set it if the caller really does cache the result; without that this
+   * trades one slow request for a slow request every time.
+   */
+  bulk?: boolean;
 }
 
 /** How far down a title's genre list still counts as leading. */
@@ -1043,11 +1077,12 @@ async function curate(
     shortlist: shortlistSize,
     leadGenre,
     firstPage = 1,
+    bulk = false,
   }: CurateOptions = {},
 ): Promise<MediaItem[]> {
   const kind: MediaKind = endpoint === "movie" ? "movie" : "series";
 
-  const raw = (await discoverRaw(endpoint, params, pages, firstPage)).filter(
+  const raw = (await discoverRaw(endpoint, params, pages, firstPage, bulk)).filter(
     (r) => r.poster_path && r.overview && (r.vote_count ?? 0) > 0,
   );
   if (!raw.length) return [];
@@ -1073,7 +1108,7 @@ async function curate(
      cast or a director, and the panel that does re-fetches the title anyway.
   */
   const enriched = await Promise.all(
-    shortlist.map((r) => enrich(r.raw, kind, { credits: false })),
+    shortlist.map((r) => enrich(r.raw, kind, { credits: false, bulk })),
   );
 
   const bar = postFloor ?? floor;

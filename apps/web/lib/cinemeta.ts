@@ -174,6 +174,26 @@ export function runtimeMinutes(raw?: string): number | undefined {
  * Cached for a day, and against the same URL `fetchImdbRating` uses with the
  * same revalidation — so a title already enriched costs nothing to price.
  */
+/**
+ * How long one request in a bulk build may take before it is abandoned.
+ *
+ * A rail is ~35 requests behind one `Promise.all`, so the slowest of them
+ * decides when the page appears. Measured against TMDB and Cinemeta the median
+ * is about 25 ms and the worst of thirty-two about 200 ms — but a single
+ * straggler was turning a 0.2 second build into a five second one, and it was
+ * a different genre every time.
+ *
+ * Nothing is lost when it fires. `enrich` keeps the list item it started with,
+ * so an abandoned detail request costs the community poster and the US release
+ * day, and an abandoned rating lookup leaves TMDB's own average in place. A
+ * title with slightly thinner data beats a page that takes five seconds to
+ * admit it was waiting on one request.
+ *
+ * Declared here rather than in lib/tmdb.ts because that module imports this
+ * one, and a constant both need has to travel in that direction.
+ */
+export const BULK_TIMEOUT_MS = 2500;
+
 export async function fetchRuntimeMinutes(
   kind: MediaKind,
   imdbId: string,
@@ -194,11 +214,21 @@ export async function fetchRuntimeMinutes(
 export async function fetchImdbRating(
   kind: MediaKind,
   imdbId: string,
+  /**
+   * One of thirty-two, inside a caller that caches the finished rail. Skips
+   * the data cache and gives up after a moment rather than holding the batch —
+   * see `BULK_TIMEOUT_MS` in lib/tmdb.ts. Losing this leaves TMDB's own
+   * average in place, which is the field it exists to improve on.
+   */
+  bulk = false,
 ): Promise<string | undefined> {
   try {
-    const res = await fetch(`${BASE}/meta/${kind}/${imdbId}.json`, {
-      next: { revalidate: 86400 },
-    });
+    const res = await fetch(
+      `${BASE}/meta/${kind}/${imdbId}.json`,
+      bulk
+        ? { cache: "no-store", signal: AbortSignal.timeout(BULK_TIMEOUT_MS) }
+        : { next: { revalidate: 86400 } },
+    );
     if (!res.ok) return undefined;
     const data = (await res.json()) as { meta?: CinemetaMeta };
     return data.meta?.imdbRating;
